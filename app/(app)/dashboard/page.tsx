@@ -27,11 +27,17 @@ export default async function DashboardPage() {
     .collection("progress")
     .find({ userId: new ObjectId(user.id), status: "approved" })
     .toArray();
-  const xp = myApproved.reduce((sum, p) => {
+  const courseXp = myApproved.reduce((sum, p) => {
     const course = courses.find((c) => c._id.toString() === p.courseId.toString());
     return sum + (course?.xp || 0);
   }, 0);
-  const level = levelInfo(xp);
+  // La participación de clase también suma XP
+  const myParticipation = await db
+    .collection("participation")
+    .find({ userId: new ObjectId(user.id) })
+    .toArray();
+  const participationXp = myParticipation.reduce((s, p) => s + (p.points || 0), 0);
+  const level = levelInfo(courseXp + participationXp);
 
   const today = todayInBogota();
   const attendance = await db

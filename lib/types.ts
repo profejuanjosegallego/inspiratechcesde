@@ -64,6 +64,16 @@ export interface ProgressDoc {
   validatedBy?: ObjectId | null;
 }
 
+export interface ParticipationDoc {
+  _id?: ObjectId;
+  userId: ObjectId;
+  points: number;
+  note?: string;
+  sessionDate: string; // YYYY-MM-DD
+  awardedBy: ObjectId;
+  createdAt: Date;
+}
+
 export type AttendanceStatus = "pending" | "approved" | "rejected";
 
 export interface AttendanceDoc {

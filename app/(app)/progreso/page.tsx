@@ -21,6 +21,16 @@ export interface CourseWithStatus {
   note: string;
 }
 
+export interface ParticipationEntry {
+  _id: string;
+  userId: string;
+  studentName: string;
+  avatar: string;
+  points: number;
+  note: string;
+  sessionDate: string;
+}
+
 export default async function ProgresoPage() {
   await ensureSeed();
   const user = (await getSession())!;
@@ -54,11 +64,37 @@ export default async function ProgresoPage() {
   const level = levelInfo(myXp);
   const myRank = ranking.findIndex((r) => r.userId === user.id) + 1;
 
+  // Registro reciente de participación (solo lo necesita el profe)
+  let participationLog: ParticipationEntry[] = [];
+  if (user.role === "profesor") {
+    const nameMap = new Map(ranking.map((r) => [r.userId, r]));
+    const logRaw = await db
+      .collection("participation")
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .toArray();
+    participationLog = logRaw.map((p) => {
+      const s = nameMap.get(p.userId.toString());
+      return {
+        _id: p._id.toString(),
+        userId: p.userId.toString(),
+        studentName: s?.name ?? "Estudiante",
+        avatar: s?.avatar ?? "🙂",
+        points: p.points,
+        note: p.note ?? "",
+        sessionDate: p.sessionDate ?? "",
+      };
+    });
+  }
+
   return (
     <ProgresoClient
       isTeacher={user.role === "profesor"}
       courses={serialize(courses)}
       ranking={ranking}
+      totalCourses={coursesRaw.length}
+      participationLog={participationLog}
       level={{
         level: level.level,
         title: level.title,

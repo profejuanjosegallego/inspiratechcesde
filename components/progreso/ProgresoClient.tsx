@@ -14,9 +14,10 @@ import {
   Trash2,
   Loader2,
   Crown,
+  Hand,
 } from "lucide-react";
 import type { RankRow } from "@/lib/leaderboard";
-import type { CourseWithStatus } from "@/app/(app)/progreso/page";
+import type { CourseWithStatus, ParticipationEntry } from "@/app/(app)/progreso/page";
 
 interface LevelData {
   level: number;
@@ -33,6 +34,8 @@ export default function ProgresoClient({
   isTeacher,
   courses,
   ranking,
+  totalCourses,
+  participationLog,
   level,
   myRank,
   myUserId,
@@ -40,6 +43,8 @@ export default function ProgresoClient({
   isTeacher: boolean;
   courses: CourseWithStatus[];
   ranking: RankRow[];
+  totalCourses: number;
+  participationLog: ParticipationEntry[];
   level: LevelData;
   myRank: number;
   myUserId: string;
@@ -47,6 +52,38 @@ export default function ProgresoClient({
   const router = useRouter();
   const [uploading, setUploading] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  async function awardParticipation(userId: string, name: string) {
+    const raw = prompt(`Puntos de participación para ${name}:`, "10");
+    if (raw === null) return;
+    const points = Number(raw);
+    if (!points) {
+      toast.error("Escribe un número de puntos válido.");
+      return;
+    }
+    const note = prompt("Nota (opcional): ¿por qué la participación?") || "";
+    const res = await fetch("/api/participation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, points, note }),
+    });
+    if (res.ok) {
+      toast.success(`+${points} XP de participación para ${name.split(" ")[0]} 🙋`);
+      router.refresh();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "No se pudo registrar");
+    }
+  }
+
+  async function deleteParticipation(id: string) {
+    if (!confirm("¿Quitar este registro de participación?")) return;
+    const res = await fetch(`/api/participation/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success("Participación eliminada");
+      router.refresh();
+    } else toast.error("No se pudo eliminar");
+  }
 
   async function upload(courseId: string, file: File) {
     setUploading(courseId);
@@ -89,6 +126,8 @@ export default function ProgresoClient({
       router.refresh();
     } else toast.error("No se pudo eliminar");
   }
+
+  const maxXp = Math.max(1, ...ranking.map((r) => r.xp));
 
   return (
     <div className="space-y-8">
@@ -147,6 +186,189 @@ export default function ProgresoClient({
             </div>
           </div>
         </motion.div>
+      )}
+
+      {/* Participación de clase (solo docente) */}
+      {isTeacher && (
+        <section className="glass rounded-3xl p-5">
+          <div className="mb-1 flex items-center gap-2">
+            <Hand className="text-magic-400" size={22} />
+            <h2 className="text-xl font-bold text-white">Participación de clase</h2>
+          </div>
+          <p className="mb-4 text-sm text-slate-400">
+            Otorga XP por participar en clase. Puedes dar varias por sesión; suman al nivel del estudiante. 🙋
+          </p>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {ranking.map((r) => (
+              <div
+                key={r.userId}
+                className="flex items-center gap-3 rounded-xl bg-white/5 p-3"
+              >
+                <span className="text-2xl">{r.avatar}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-white">{r.name}</p>
+                  <p className="text-xs text-slate-400">
+                    {r.participationXp} XP de participación
+                  </p>
+                </div>
+                <button
+                  onClick={() => awardParticipation(r.userId, r.name)}
+                  className="flex items-center gap-1 rounded-lg bg-gradient-to-r from-magic-500 to-brand-500 px-3 py-1.5 text-xs font-bold text-white transition hover:scale-105"
+                >
+                  <Plus size={14} /> Puntos
+                </button>
+              </div>
+            ))}
+            {ranking.length === 0 && (
+              <p className="text-sm text-slate-400">
+                Aún no hay estudiantes registrados.
+              </p>
+            )}
+          </div>
+
+          {participationLog.length > 0 && (
+            <div className="mt-5">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Últimas participaciones
+              </p>
+              <ul className="space-y-1.5">
+                {participationLog.map((p) => (
+                  <li
+                    key={p._id}
+                    className="group flex items-center gap-2 rounded-lg bg-black/20 px-3 py-2 text-sm"
+                  >
+                    <span>{p.avatar}</span>
+                    <span className="font-medium text-white">
+                      {p.studentName.split(" ")[0]}
+                    </span>
+                    <span className="rounded-full bg-magic-500/20 px-2 py-0.5 text-xs font-bold text-magic-300">
+                      +{p.points} XP
+                    </span>
+                    {p.note && (
+                      <span className="truncate text-xs text-slate-400">— {p.note}</span>
+                    )}
+                    <button
+                      onClick={() => deleteParticipation(p._id)}
+                      className="ml-auto text-slate-600 opacity-0 transition group-hover:opacity-100 hover:text-red-400"
+                      title="Quitar"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Consolidado por estudiante (solo docente) */}
+      {isTeacher && (
+        <section className="glass rounded-3xl p-5">
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-xl font-bold text-white">Consolidado por estudiante</h2>
+            <div className="flex items-center gap-4 text-xs text-slate-300">
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-sm" style={{ background: "#3987e5" }} /> Cursos
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-sm" style={{ background: "#199e70" }} /> Participación
+              </span>
+            </div>
+          </div>
+          <p className="mb-4 text-sm text-slate-400">
+            XP total de cada estudiante, desglosado entre certificados de cursos y participación de clase.
+          </p>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-slate-400">
+                  <th className="px-2 py-2">Estudiante</th>
+                  <th className="px-2 py-2 text-center">Nivel</th>
+                  <th className="px-2 py-2 text-center">Cert.</th>
+                  <th className="px-2 py-2 text-right tabular-nums" style={{ color: "#5aa0ec" }}>
+                    XP cursos
+                  </th>
+                  <th className="px-2 py-2 text-right tabular-nums" style={{ color: "#2bbd88" }}>
+                    XP part.
+                  </th>
+                  <th className="px-2 py-2 text-right tabular-nums text-white">Total</th>
+                  <th className="px-2 py-2">Desglose</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ranking.map((r) => (
+                  <tr key={r.userId} className="border-t border-white/5">
+                    <td className="px-2 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{r.avatar}</span>
+                        <span className="whitespace-nowrap font-medium text-white">
+                          {r.name.split(" ").slice(0, 2).join(" ")}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2.5 text-center">
+                      <span className="rounded-md bg-brand-500/20 px-2 py-0.5 text-xs font-bold text-brand-200">
+                        {r.level}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2.5 text-center text-slate-300">
+                      {r.approved}/{totalCourses}
+                    </td>
+                    <td className="px-2 py-2.5 text-right font-semibold tabular-nums text-slate-200">
+                      {r.courseXp}
+                    </td>
+                    <td className="px-2 py-2.5 text-right font-semibold tabular-nums text-slate-200">
+                      {r.participationXp}
+                    </td>
+                    <td className="px-2 py-2.5 text-right font-black tabular-nums text-white">
+                      {r.xp}
+                    </td>
+                    <td className="px-2 py-2.5">
+                      <div
+                        className="flex h-4 items-center gap-[2px] overflow-hidden rounded-full"
+                        style={{ width: `${Math.max(6, (r.xp / maxXp) * 100)}%`, minWidth: 40 }}
+                      >
+                        {r.courseXp > 0 && (
+                          <div
+                            className="h-full rounded-l-full"
+                            style={{
+                              background: "#3987e5",
+                              flexGrow: r.courseXp,
+                            }}
+                            title={`Cursos: ${r.courseXp} XP`}
+                          />
+                        )}
+                        {r.participationXp > 0 && (
+                          <div
+                            className="h-full rounded-r-full"
+                            style={{
+                              background: "#199e70",
+                              flexGrow: r.participationXp,
+                            }}
+                            title={`Participación: ${r.participationXp} XP`}
+                          />
+                        )}
+                        {r.xp === 0 && (
+                          <div className="h-full w-full rounded-full bg-white/5" />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {ranking.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-2 py-6 text-center text-slate-400">
+                      Aún no hay estudiantes registrados.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       <div className="grid gap-6 lg:grid-cols-5">
@@ -214,7 +436,7 @@ export default function ProgresoClient({
                       {r.name.split(" ").slice(0, 2).join(" ")}
                     </p>
                     <p className="text-[11px] text-slate-400">
-                      Nv {r.level} · {r.title} · {r.approved} cert.
+                      Nv {r.level} · {r.approved} cert. · {r.participationXp} part.
                     </p>
                   </div>
                   <span className="text-sm font-black text-brand-200">{r.xp}</span>
