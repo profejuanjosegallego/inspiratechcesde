@@ -9,6 +9,7 @@ import {
   KanbanSquare,
   Trophy,
   CalendarCheck,
+  MessageCircle,
   ShieldCheck,
   LogOut,
   Menu,
@@ -21,6 +22,7 @@ const links = [
   { href: "/tablero", label: "Tablero HU", icon: KanbanSquare },
   { href: "/progreso", label: "Progreso", icon: Trophy },
   { href: "/asistencia", label: "Asistencia", icon: CalendarCheck },
+  { href: "/chat", label: "Pregúntale al Profe", icon: MessageCircle },
 ];
 
 export default function AppShell({
@@ -69,7 +71,7 @@ export default function AppShell({
   );
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex flex-1 flex-col">
       {/* Barra superior */}
       <header className="sticky top-0 z-40 glass border-b border-white/10">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">

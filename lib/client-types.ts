@@ -25,3 +25,13 @@ export interface ClientCourse {
   order: number;
   xp: number;
 }
+
+export interface ChatMessage {
+  _id: string;
+  userId: string;
+  name: string;
+  avatar: string;
+  role: "profesor" | "estudiante";
+  text: string;
+  createdAt: string;
+}

@@ -83,6 +83,12 @@ export default async function DashboardPage() {
           title="Asistencia"
           desc="Registra tu llegada de hoy."
         />
+        <QuickLink
+          href="/chat"
+          emoji="💬"
+          title="Pregúntale al Profe"
+          desc="Chat del grupo: pregunta lo que necesites."
+        />
       </div>
     </div>
   );

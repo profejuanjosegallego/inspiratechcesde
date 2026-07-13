@@ -35,6 +35,7 @@ export async function ensureSeed() {
       .collection("progress")
       .createIndex({ userId: 1, courseId: 1 }, { unique: true }),
     db.collection("courses").createIndex({ order: 1 }),
+    db.collection("messages").createIndex({ createdAt: 1 }),
   ]);
 
   // ── Profesor ──
