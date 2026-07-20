@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ObjectId } from "mongodb";
 import { getSession } from "@/lib/auth";
 import { getDb } from "@/lib/mongodb";
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   await ensureSeed();
   const user = (await getSession())!;
+  if (user.role === "coordinacion") redirect("/coordinacion");
   const db = await getDb();
 
   const [todo, inProgress, done] = await Promise.all([

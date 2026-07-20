@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export interface AttendanceRow {
   _id: string;
   classDate: string;
-  checkInAt: string;
+  checkInAt: string | null;
   status: "pending" | "approved" | "rejected";
   late: boolean;
   note: string;

@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { CalendarCheck, Award, Check, Clock3, X, FileText } from "lucide-react";
-import type { AttRow, CertRow } from "@/app/(app)/panel/page";
+import { CalendarCheck, Award, Check, Clock3, X, FileText, Users, Trash2, BadgeCheck, MailWarning, MessageSquare } from "lucide-react";
+import type { AttRow, CertRow, StudentRow } from "@/app/(app)/panel/page";
 
 function fmtTime(iso: string | null) {
   if (!iso) return "—";
@@ -21,30 +21,78 @@ export default function PanelClient({
   todayLabel,
   attendance,
   certs,
+  students,
 }: {
   todayLabel: string;
   attendance: AttRow[];
   certs: CertRow[];
+  students: StudentRow[];
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"asistencia" | "certificados">("asistencia");
+  const [tab, setTab] = useState<"asistencia" | "certificados" | "estudiantes">("asistencia");
   const [busy, setBusy] = useState<string | null>(null);
 
   const pendingCerts = certs.filter((c) => c.status === "pending").length;
   const pendingAtt = attendance.filter((a) => a.status === "pending").length;
 
-  async function validateAtt(id: string, status: string, late = false) {
-    setBusy(id);
-    const res = await fetch(`/api/attendance/${id}`, {
-      method: "PATCH",
+  // Marca/actualiza la asistencia de hoy por userId (funcione o no exista un
+  // registro previo), así el profe puede poner falta a quien no marcó llegada.
+  async function validateAtt(userId: string, status: string, late = false, note?: string) {
+    setBusy(userId);
+    const res = await fetch(`/api/attendance/teacher`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, late }),
+      body: JSON.stringify({ userId, status, late, ...(note !== undefined ? { note } : {}) }),
     });
     setBusy(null);
     if (res.ok) {
-      toast.success("Asistencia validada");
+      toast.success("Asistencia actualizada");
       router.refresh();
     } else toast.error("Error al validar");
+  }
+
+  // Marcar falta pidiendo el motivo (queda como evidencia del proceso).
+  async function markFalta(userId: string) {
+    const reason = prompt("Motivo de la falta (opcional). Deja vacío si no aplica:");
+    if (reason === null) return; // canceló → no se marca
+    validateAtt(userId, "rejected", false, reason);
+  }
+
+  // Observación de la clase para un estudiante (sirve como evidencia; solo la
+  // ven el profe y coordinación).
+  async function addObservation(userId: string, current: string) {
+    const note = prompt("Observación de la clase para este estudiante:", current || "");
+    if (note === null) return;
+    setBusy(userId);
+    const res = await fetch(`/api/attendance/teacher`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, note }),
+    });
+    setBusy(null);
+    if (res.ok) {
+      toast.success("Observación guardada");
+      router.refresh();
+    } else toast.error("Error al guardar la observación");
+  }
+
+  async function deleteUser(id: string, name: string) {
+    if (
+      !confirm(
+        `¿Eliminar a ${name} y TODOS sus datos (asistencia, certificados, progreso, participación y mensajes)?\n\nEsta acción no se puede deshacer.`
+      )
+    )
+      return;
+    setBusy(id);
+    const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
+    setBusy(null);
+    if (res.ok) {
+      toast.success("Usuario eliminado");
+      router.refresh();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "Error al eliminar");
+    }
   }
 
   async function validateCert(id: string, status: string) {
@@ -88,6 +136,13 @@ export default function PanelClient({
           label="Certificados"
           badge={pendingCerts}
         />
+        <TabButton
+          active={tab === "estudiantes"}
+          onClick={() => setTab("estudiantes")}
+          icon={Users}
+          label="Estudiantes"
+          badge={0}
+        />
       </div>
 
       {tab === "asistencia" && (
@@ -99,38 +154,51 @@ export default function PanelClient({
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-white">{a.name}</p>
                   <p className="text-xs text-slate-400">
-                    {a.status === "absent"
+                    {a.checkInAt
+                      ? `Llegó a las ${fmtTime(a.checkInAt)}`
+                      : a.status === "absent"
                       ? "Sin registrar"
-                      : `Llegó a las ${fmtTime(a.checkInAt)}`}
+                      : "Marcado por el profe"}
                   </p>
+                  {a.note && (
+                    <p className="mt-0.5 flex items-start gap-1 text-xs italic text-slate-300">
+                      <MessageSquare size={12} className="mt-0.5 shrink-0 text-brand-300" />
+                      {a.note}
+                    </p>
+                  )}
                 </div>
 
-                {a.status === "absent" ? (
-                  <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-slate-400">
-                    Sin registro
-                  </span>
-                ) : a.status === "pending" ? (
+                <button
+                  disabled={busy === a.userId}
+                  onClick={() => addObservation(a.userId, a.note)}
+                  title="Observación de la clase"
+                  className="flex items-center gap-1 rounded-lg bg-white/5 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/10"
+                >
+                  <MessageSquare size={14} /> {a.note ? "Editar" : "Observación"}
+                </button>
+
+                {a.status === "pending" || a.status === "absent" ? (
                   <div className="flex flex-wrap gap-2">
                     <button
-                      disabled={busy === a._id}
-                      onClick={() => validateAtt(a._id!, "approved", false)}
+                      disabled={busy === a.userId}
+                      onClick={() => validateAtt(a.userId, "approved", false)}
                       className="flex items-center gap-1 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/30"
                     >
                       <Check size={14} /> A tiempo
                     </button>
                     <button
-                      disabled={busy === a._id}
-                      onClick={() => validateAtt(a._id!, "approved", true)}
+                      disabled={busy === a.userId}
+                      onClick={() => validateAtt(a.userId, "approved", true)}
                       className="flex items-center gap-1 rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/30"
                     >
                       <Clock3 size={14} /> Tarde
                     </button>
                     <button
-                      disabled={busy === a._id}
-                      onClick={() => validateAtt(a._id!, "rejected", false)}
+                      disabled={busy === a.userId}
+                      onClick={() => (a.status === "absent" ? markFalta(a.userId) : validateAtt(a.userId, "rejected", false))}
                       className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/30"
                     >
-                      <X size={14} /> Rechazar
+                      <X size={14} /> {a.status === "absent" ? "Marcar falta" : "Rechazar"}
                     </button>
                   </div>
                 ) : (
@@ -220,6 +288,49 @@ export default function PanelClient({
               )}
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {tab === "estudiantes" && (
+        <div className="glass overflow-hidden rounded-2xl">
+          <ul className="divide-y divide-white/5">
+            {students.map((s) => (
+              <li key={s._id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <span className="text-2xl">{s.avatar}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-white">{s.name}</p>
+                  <p className="truncate text-xs text-slate-400">{s.email}</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {s.verified ? (
+                    <span className="flex items-center gap-1 text-xs text-emerald-300">
+                      <BadgeCheck size={14} /> Verificado
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-amber-300">
+                      <MailWarning size={14} /> Sin verificar
+                    </span>
+                  )}
+                  <span className="hidden text-xs text-slate-400 sm:inline">
+                    {s.attendanceCount} asistencias
+                  </span>
+                  <button
+                    disabled={busy === s._id}
+                    onClick={() => deleteUser(s._id, s.name)}
+                    className="flex items-center gap-1 rounded-lg bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/30 disabled:opacity-50"
+                  >
+                    <Trash2 size={14} /> Eliminar
+                  </button>
+                </div>
+              </li>
+            ))}
+            {students.length === 0 && (
+              <li className="p-6 text-center text-sm text-slate-400">
+                No hay estudiantes registrados todavía.
+              </li>
+            )}
+          </ul>
         </div>
       )}
     </div>

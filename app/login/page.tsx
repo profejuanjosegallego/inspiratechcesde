@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { Rocket, Loader2 } from "lucide-react";
+import { Rocket, Loader2, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -50,9 +51,9 @@ export default function LoginPage() {
 
         <form onSubmit={submit} className="mt-6 space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-300">Correo</label>
+            <label className="mb-1 block text-sm font-medium text-slate-300">Correo o usuario</label>
             <input
-              type="email"
+              type="text"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -62,14 +63,24 @@ export default function LoginPage() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-300">Contraseña</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/40"
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <input
+                type={showPass ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-12 text-white outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/40"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass((v) => !v)}
+                aria-label={showPass ? "Ocultar contraseña" : "Mostrar contraseña"}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-white"
+              >
+                {showPass ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
           <button
             type="submit"

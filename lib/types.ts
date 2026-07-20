@@ -1,6 +1,6 @@
 import type { ObjectId } from "mongodb";
 
-export type Role = "profesor" | "estudiante";
+export type Role = "profesor" | "estudiante" | "coordinacion";
 
 export interface UserDoc {
   _id?: ObjectId;
@@ -80,7 +80,7 @@ export interface AttendanceDoc {
   _id?: ObjectId;
   userId: ObjectId;
   classDate: string; // YYYY-MM-DD
-  checkInAt: Date; // momento exacto de llegada
+  checkInAt: Date | null; // momento exacto de llegada (null si la marcó el profe)
   status: AttendanceStatus;
   late: boolean;
   validatedBy?: ObjectId | null;

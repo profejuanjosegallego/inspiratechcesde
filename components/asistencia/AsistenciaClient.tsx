@@ -7,7 +7,8 @@ import toast from "react-hot-toast";
 import { CalendarCheck, Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
 import type { AttendanceRow } from "@/app/(app)/asistencia/page";
 
-function fmtTime(iso: string) {
+function fmtTime(iso: string | null) {
+  if (!iso) return "—";
   return new Intl.DateTimeFormat("es-CO", {
     timeZone: "America/Bogota",
     hour: "numeric",
@@ -112,7 +113,13 @@ export default function AsistenciaClient({
               <div className="flex items-center justify-center gap-2 rounded-2xl bg-white/5 p-4">
                 <Clock className="text-brand-300" size={22} />
                 <span className="text-white">
-                  Llegaste a las <b>{fmtTime(todayRow.checkInAt)}</b>
+                  {todayRow.checkInAt ? (
+                    <>
+                      Llegaste a las <b>{fmtTime(todayRow.checkInAt)}</b>
+                    </>
+                  ) : (
+                    "Registro marcado por el profe"
+                  )}
                 </span>
               </div>
               <StatusBadge status={todayRow.status} late={todayRow.late} big />

@@ -16,6 +16,7 @@ export interface AttRow {
   checkInAt: string | null;
   status: "pending" | "approved" | "rejected" | "absent";
   late: boolean;
+  note: string;
 }
 
 export interface CertRow {
@@ -30,6 +31,16 @@ export interface CertRow {
   status: string;
 }
 
+export interface StudentRow {
+  _id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  verified: boolean;
+  createdAt: string;
+  attendanceCount: number;
+}
+
 export default async function PanelPage() {
   await ensureSeed();
   const user = await getSession();
@@ -39,16 +50,18 @@ export default async function PanelPage() {
   const db = await getDb();
   const today = todayInBogota();
 
-  const [students, courses, attendanceDocs, certDocs] = await Promise.all([
+  const [students, courses, attendanceDocs, certDocs, attCounts] = await Promise.all([
     db.collection("users").find({ role: "estudiante" }).sort({ name: 1 }).toArray(),
     db.collection("courses").find().toArray(),
     db.collection("attendance").find({ classDate: today }).toArray(),
     db.collection("progress").find({ status: { $in: ["pending", "approved", "rejected"] } }).toArray(),
+    db.collection("attendance").aggregate([{ $group: { _id: "$userId", n: { $sum: 1 } } }]).toArray(),
   ]);
 
   const userMap = new Map(students.map((s) => [s._id.toString(), s]));
   const courseMap = new Map(courses.map((c) => [c._id.toString(), c]));
   const attMap = new Map(attendanceDocs.map((a) => [a.userId.toString(), a]));
+  const attCountMap = new Map(attCounts.map((a) => [a._id.toString(), a.n as number]));
 
   // Asistencia de hoy: TODOS los estudiantes (los que no registraron = 'absent')
   const attendance: AttRow[] = students.map((s) => {
@@ -59,9 +72,10 @@ export default async function PanelPage() {
       name: s.name,
       avatar: s.avatar,
       classDate: today,
-      checkInAt: a ? new Date(a.checkInAt).toISOString() : null,
+      checkInAt: a && a.checkInAt ? new Date(a.checkInAt).toISOString() : null,
       status: a ? (a.status as AttRow["status"]) : "absent",
       late: a ? !!a.late : false,
+      note: a ? (a.note ?? "") : "",
     };
   });
 
@@ -88,11 +102,23 @@ export default async function PanelPage() {
       return b.uploadedAt.localeCompare(a.uploadedAt);
     });
 
+  // Estudiantes (para gestionar / eliminar)
+  const studentRows: StudentRow[] = students.map((s) => ({
+    _id: s._id.toString(),
+    name: s.name,
+    email: s.email,
+    avatar: s.avatar,
+    verified: !!s.verified,
+    createdAt: new Date(s.createdAt).toISOString(),
+    attendanceCount: attCountMap.get(s._id.toString()) ?? 0,
+  }));
+
   return (
     <PanelClient
       todayLabel={longDateInBogota()}
       attendance={attendance}
       certs={certs}
+      students={studentRows}
     />
   );
 }

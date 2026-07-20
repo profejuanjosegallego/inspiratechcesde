@@ -11,6 +11,7 @@ import {
   CalendarCheck,
   MessageCircle,
   ShieldCheck,
+  ClipboardList,
   LogOut,
   Menu,
   X,
@@ -36,9 +37,17 @@ export default function AppShell({
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
-  const nav = [...links];
-  if (user.role === "profesor") {
-    nav.push({ href: "/panel", label: "Panel Profe", icon: ShieldCheck });
+  // Coordinación es solo lectura: únicamente ve su panel. Los demás roles ven
+  // las secciones del estudiante (+ Panel/Coordinación si es profe).
+  let nav: { href: string; label: string; icon: typeof LayoutDashboard }[];
+  if (user.role === "coordinacion") {
+    nav = [{ href: "/coordinacion", label: "Coordinación", icon: ClipboardList }];
+  } else {
+    nav = [...links];
+    if (user.role === "profesor") {
+      nav.push({ href: "/panel", label: "Panel Profe", icon: ShieldCheck });
+      nav.push({ href: "/coordinacion", label: "Coordinación", icon: ClipboardList });
+    }
   }
 
   async function logout() {

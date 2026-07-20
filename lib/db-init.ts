@@ -57,6 +57,24 @@ export async function ensureSeed() {
     }
   }
 
+  // ── Cuenta de Coordinación (solo lectura) ──
+  // Credenciales sencillas por defecto: usuario "admin" / contraseña "admin".
+  // Se pueden sobreescribir con COORD_EMAIL / COORD_NAME / COORD_PASSWORD.
+  const coordEmail = (process.env.COORD_EMAIL || "admin").toLowerCase();
+  const coordExists = await db.collection("users").findOne({ email: coordEmail });
+  if (!coordExists) {
+    const coord: UserDoc = {
+      name: process.env.COORD_NAME || "Coordinación",
+      email: coordEmail,
+      passwordHash: await hashPassword(process.env.COORD_PASSWORD || "admin"),
+      role: "coordinacion",
+      verified: true,
+      avatar: "🧭",
+      createdAt: new Date(),
+    };
+    await db.collection("users").insertOne(coord);
+  }
+
   // ── Historias de Usuario ──
   const storyCount = await db.collection("stories").countDocuments();
   if (storyCount === 0) {

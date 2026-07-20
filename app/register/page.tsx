@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
-import { Rocket, Loader2, MailCheck } from "lucide-react";
+import { Rocket, Loader2, MailCheck, Eye, EyeOff } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -13,6 +13,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -124,15 +125,25 @@ export default function RegisterPage() {
                   <label className="mb-1 block text-sm font-medium text-slate-300">
                     Contraseña
                   </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={inputCls}
-                    placeholder="Mínimo 6 caracteres"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPass ? "text" : "password"}
+                      required
+                      minLength={6}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={`${inputCls} pr-12`}
+                      placeholder="Mínimo 6 caracteres"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass((v) => !v)}
+                      aria-label={showPass ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-white"
+                    >
+                      {showPass ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
                 </div>
                 <button
                   type="submit"
