@@ -41,7 +41,11 @@ export interface StudentRow {
   attendanceCount: number;
 }
 
-export default async function PanelPage() {
+export default async function PanelPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
   await ensureSeed();
   const user = await getSession();
   if (!user) redirect("/login");
@@ -50,10 +54,16 @@ export default async function PanelPage() {
   const db = await getDb();
   const today = todayInBogota();
 
+  // Fecha de asistencia seleccionada (por defecto hoy). Solo se admite hoy o
+  // fechas pasadas con formato válido.
+  const { date } = await searchParams;
+  const selectedDate =
+    date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today ? date : today;
+
   const [students, courses, attendanceDocs, certDocs, attCounts] = await Promise.all([
     db.collection("users").find({ role: "estudiante" }).sort({ name: 1 }).toArray(),
     db.collection("courses").find().toArray(),
-    db.collection("attendance").find({ classDate: today }).toArray(),
+    db.collection("attendance").find({ classDate: selectedDate }).toArray(),
     db.collection("progress").find({ status: { $in: ["pending", "approved", "rejected"] } }).toArray(),
     db.collection("attendance").aggregate([{ $group: { _id: "$userId", n: { $sum: 1 } } }]).toArray(),
   ]);
@@ -63,7 +73,8 @@ export default async function PanelPage() {
   const attMap = new Map(attendanceDocs.map((a) => [a.userId.toString(), a]));
   const attCountMap = new Map(attCounts.map((a) => [a._id.toString(), a.n as number]));
 
-  // Asistencia de hoy: TODOS los estudiantes (los que no registraron = 'absent')
+  // Asistencia de la fecha elegida: TODOS los estudiantes (los que no tienen
+  // registro = 'absent')
   const attendance: AttRow[] = students.map((s) => {
     const a = attMap.get(s._id.toString());
     return {
@@ -71,7 +82,7 @@ export default async function PanelPage() {
       userId: s._id.toString(),
       name: s.name,
       avatar: s.avatar,
-      classDate: today,
+      classDate: selectedDate,
       checkInAt: a && a.checkInAt ? new Date(a.checkInAt).toISOString() : null,
       status: a ? (a.status as AttRow["status"]) : "absent",
       late: a ? !!a.late : false,
@@ -116,6 +127,8 @@ export default async function PanelPage() {
   return (
     <PanelClient
       todayLabel={longDateInBogota()}
+      selectedDate={selectedDate}
+      today={today}
       attendance={attendance}
       certs={certs}
       students={studentRows}

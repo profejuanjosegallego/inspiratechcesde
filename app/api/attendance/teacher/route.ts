@@ -10,7 +10,7 @@ import { todayInBogota } from "@/lib/date";
 // Se puede enviar solo el estado, solo la nota, o ambos.
 export const POST = handler(async (req) => {
   const teacher = await requireTeacher();
-  const { userId, status, late, note } = await req.json();
+  const { userId, status, late, note, classDate } = await req.json();
 
   if (!ObjectId.isValid(userId)) return fail("Estudiante inválido.");
   if (status !== undefined && !["approved", "rejected", "pending"].includes(status)) {
@@ -20,13 +20,21 @@ export const POST = handler(async (req) => {
     return fail("No hay nada que actualizar.");
   }
 
+  // Fecha de la clase: por defecto hoy; se admite cualquier fecha PASADA (no
+  // futura) para corregir asistencias/observaciones de días anteriores.
+  const today = todayInBogota();
+  let day = today;
+  if (classDate !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(classDate)) return fail("Fecha inválida.");
+    if (classDate > today) return fail("No se puede marcar una fecha futura.");
+    day = classDate;
+  }
+
   const db = await getDb();
   const student = await db
     .collection("users")
     .findOne({ _id: new ObjectId(userId), role: "estudiante" });
   if (!student) return fail("El estudiante no existe.", 404);
-
-  const today = todayInBogota();
 
   // Solo incluimos en $set los campos enviados, y el resto va en $setOnInsert
   // (sin solaparse, para no chocar en el upsert).
@@ -50,7 +58,7 @@ export const POST = handler(async (req) => {
   }
 
   await db.collection("attendance").updateOne(
-    { userId: new ObjectId(userId), classDate: today },
+    { userId: new ObjectId(userId), classDate: day },
     { $set: set, $setOnInsert: setOnInsert },
     { upsert: true }
   );

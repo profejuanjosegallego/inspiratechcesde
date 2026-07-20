@@ -9,13 +9,15 @@ if (!uri) {
   );
 }
 
-// Pensado para serverless (Vercel): pool pequeño por instancia y timeouts
-// cortos para que un problema de conexión FALLE RÁPIDO en vez de dejar la
-// página colgada esperando a Mongo.
+// Pensado para serverless (Vercel) sobre un cluster Atlas M0 (gratis), que es
+// compartido y LENTO al conectar en frío. Damos margen para que el arranque en
+// frío alcance a conectar (evita "ReplicaSetNoPrimary: timed out"), y un pool
+// pequeño para no agotar el límite de conexiones del M0.
 const options: MongoClientOptions = {
-  maxPoolSize: 10,
-  serverSelectionTimeoutMS: 8000,
-  connectTimeoutMS: 8000,
+  maxPoolSize: 5,
+  serverSelectionTimeoutMS: 15000,
+  connectTimeoutMS: 15000,
+  socketTimeoutMS: 45000,
 };
 
 // Reutilizamos la MISMA promesa de conexión entre invocaciones, tanto en

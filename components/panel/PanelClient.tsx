@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { CalendarCheck, Award, Check, Clock3, X, FileText, Users, Trash2, BadgeCheck, MailWarning, MessageSquare } from "lucide-react";
+import { CalendarCheck, Award, Check, Clock3, X, FileText, Users, Trash2, BadgeCheck, MailWarning, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
 import type { AttRow, CertRow, StudentRow } from "@/app/(app)/panel/page";
 
 function fmtTime(iso: string | null) {
@@ -19,11 +19,15 @@ function fmtTime(iso: string | null) {
 
 export default function PanelClient({
   todayLabel,
+  selectedDate,
+  today,
   attendance,
   certs,
   students,
 }: {
   todayLabel: string;
+  selectedDate: string;
+  today: string;
   attendance: AttRow[];
   certs: CertRow[];
   students: StudentRow[];
@@ -31,18 +35,32 @@ export default function PanelClient({
   const router = useRouter();
   const [tab, setTab] = useState<"asistencia" | "certificados" | "estudiantes">("asistencia");
   const [busy, setBusy] = useState<string | null>(null);
+  const [navPending, startNav] = useTransition();
+
+  const isToday = selectedDate === today;
 
   const pendingCerts = certs.filter((c) => c.status === "pending").length;
   const pendingAtt = attendance.filter((a) => a.status === "pending").length;
 
-  // Marca/actualiza la asistencia de hoy por userId (funcione o no exista un
-  // registro previo), así el profe puede poner falta a quien no marcó llegada.
+  // Cambia la fecha de asistencia recargando el panel con ?date=...
+  function goToDate(dateStr: string) {
+    if (dateStr > today) return; // no futuras
+    startNav(() => router.push(dateStr === today ? "/panel" : `/panel?date=${dateStr}`));
+  }
+  function shiftDay(delta: number) {
+    const d = new Date(selectedDate + "T12:00:00Z");
+    d.setUTCDate(d.getUTCDate() + delta);
+    goToDate(d.toISOString().slice(0, 10));
+  }
+
+  // Marca/actualiza la asistencia de la fecha elegida por userId (funcione o no
+  // exista un registro previo), así el profe puede poner falta a quien no marcó.
   async function validateAtt(userId: string, status: string, late = false, note?: string) {
     setBusy(userId);
     const res = await fetch(`/api/attendance/teacher`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, status, late, ...(note !== undefined ? { note } : {}) }),
+      body: JSON.stringify({ userId, status, late, classDate: selectedDate, ...(note !== undefined ? { note } : {}) }),
     });
     setBusy(null);
     if (res.ok) {
@@ -67,7 +85,7 @@ export default function PanelClient({
     const res = await fetch(`/api/attendance/teacher`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, note }),
+      body: JSON.stringify({ userId, note, classDate: selectedDate }),
     });
     setBusy(null);
     if (res.ok) {
@@ -146,8 +164,47 @@ export default function PanelClient({
       </div>
 
       {tab === "asistencia" && (
-        <div className="glass overflow-hidden rounded-2xl">
-          <ul className="divide-y divide-white/5">
+        <div className="space-y-3">
+          {/* Selector de fecha: hoy o días anteriores */}
+          <div className="glass flex flex-wrap items-center gap-2 rounded-2xl p-3">
+            <button
+              onClick={() => shiftDay(-1)}
+              className="rounded-lg bg-white/5 p-2 text-slate-300 hover:bg-white/10"
+              aria-label="Día anterior"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <input
+              type="date"
+              value={selectedDate}
+              max={today}
+              onChange={(e) => e.target.value && goToDate(e.target.value)}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white outline-none [color-scheme:dark] focus:border-brand-400"
+            />
+            <button
+              onClick={() => shiftDay(1)}
+              disabled={isToday}
+              className="rounded-lg bg-white/5 p-2 text-slate-300 hover:bg-white/10 disabled:opacity-40"
+              aria-label="Día siguiente"
+            >
+              <ChevronRight size={18} />
+            </button>
+            {!isToday && (
+              <button
+                onClick={() => goToDate(today)}
+                className="rounded-lg bg-brand-500/20 px-3 py-1.5 text-xs font-semibold text-brand-200 hover:bg-brand-500/30"
+              >
+                Ir a hoy
+              </button>
+            )}
+            <span className="ml-auto text-xs text-slate-400">
+              {isToday ? "Asistencia de hoy" : "Editando fecha anterior"}
+              {navPending && " · cargando…"}
+            </span>
+          </div>
+
+          <div className="glass overflow-hidden rounded-2xl">
+            <ul className="divide-y divide-white/5">
             {attendance.map((a) => (
               <li key={a.userId} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <span className="text-2xl">{a.avatar}</span>
@@ -225,7 +282,8 @@ export default function PanelClient({
                 No hay estudiantes registrados todavía.
               </li>
             )}
-          </ul>
+            </ul>
+          </div>
         </div>
       )}
 
