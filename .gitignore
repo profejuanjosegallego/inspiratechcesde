@@ -37,6 +37,11 @@ yarn-error.log*
 # documentos internos de los retos (no subir a un repo público)
 /proyectos/
 
+# datos personales de los estudiantes: el plan de estudios con el control
+# nominal por estudiante se queda SOLO en local (lo lee scripts/import-plan.mjs)
+/Plan de Estudios Platzi - Control estudiantes.xlsx
+/*.xlsx
+
 # vercel
 .vercel
 

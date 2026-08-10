@@ -19,6 +19,7 @@ function fmtTime(iso: string | null) {
 
 export default function PanelClient({
   todayLabel,
+  selectedLabel,
   selectedDate,
   today,
   attendance,
@@ -26,6 +27,7 @@ export default function PanelClient({
   students,
 }: {
   todayLabel: string;
+  selectedLabel: string;
   selectedDate: string;
   today: string;
   attendance: AttRow[];
@@ -69,9 +71,10 @@ export default function PanelClient({
     } else toast.error("Error al validar");
   }
 
-  // Marcar falta pidiendo el motivo (queda como evidencia del proceso).
-  async function markFalta(userId: string) {
-    const reason = prompt("Motivo de la falta (opcional). Deja vacío si no aplica:");
+  // Marcar falta pidiendo el motivo (queda como evidencia del proceso). Se
+  // prellena con la nota actual para no borrarla al corregir un día pasado.
+  async function markFalta(userId: string, current: string) {
+    const reason = prompt("Motivo de la falta (opcional). Deja vacío si no aplica:", current || "");
     if (reason === null) return; // canceló → no se marca
     validateAtt(userId, "rejected", false, reason);
   }
@@ -144,7 +147,7 @@ export default function PanelClient({
           active={tab === "asistencia"}
           onClick={() => setTab("asistencia")}
           icon={CalendarCheck}
-          label="Asistencia de hoy"
+          label="Asistencia"
           badge={pendingAtt}
         />
         <TabButton
@@ -198,7 +201,8 @@ export default function PanelClient({
               </button>
             )}
             <span className="ml-auto text-xs text-slate-400">
-              {isToday ? "Asistencia de hoy" : "Editando fecha anterior"}
+              <span className="capitalize">{selectedLabel}</span>
+              {!isToday && " · editando fecha anterior"}
               {navPending && " · cargando…"}
             </span>
           </div>
@@ -216,6 +220,7 @@ export default function PanelClient({
                       : a.status === "absent"
                       ? "Sin registrar"
                       : "Marcado por el profe"}
+                    {a.status === "pending" && " · sin validar"}
                   </p>
                   {a.note && (
                     <p className="mt-0.5 flex items-start gap-1 text-xs italic text-slate-300">
@@ -234,47 +239,34 @@ export default function PanelClient({
                   <MessageSquare size={14} /> {a.note ? "Editar" : "Observación"}
                 </button>
 
-                {a.status === "pending" || a.status === "absent" ? (
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      disabled={busy === a.userId}
-                      onClick={() => validateAtt(a.userId, "approved", false)}
-                      className="flex items-center gap-1 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/30"
-                    >
-                      <Check size={14} /> A tiempo
-                    </button>
-                    <button
-                      disabled={busy === a.userId}
-                      onClick={() => validateAtt(a.userId, "approved", true)}
-                      className="flex items-center gap-1 rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/30"
-                    >
-                      <Clock3 size={14} /> Tarde
-                    </button>
-                    <button
-                      disabled={busy === a.userId}
-                      onClick={() => (a.status === "absent" ? markFalta(a.userId) : validateAtt(a.userId, "rejected", false))}
-                      className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/30"
-                    >
-                      <X size={14} /> {a.status === "absent" ? "Marcar falta" : "Rechazar"}
-                    </button>
-                  </div>
-                ) : (
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      a.status === "approved"
-                        ? a.late
-                          ? "bg-amber-500/15 text-amber-300"
-                          : "bg-emerald-500/15 text-emerald-300"
-                        : "bg-red-500/15 text-red-300"
-                    }`}
-                  >
-                    {a.status === "approved"
-                      ? a.late
-                        ? "Validada · tarde"
-                        : "Validada ✔"
-                      : "Rechazada"}
-                  </span>
-                )}
+                {/* El estado SIEMPRE es editable, también en días pasados ya
+                    validados: el actual queda resaltado y tocar otro lo corrige. */}
+                <div className="flex flex-wrap gap-2">
+                  <StatusButton
+                    active={a.status === "approved" && !a.late}
+                    disabled={busy === a.userId}
+                    onClick={() => validateAtt(a.userId, "approved", false)}
+                    tone="emerald"
+                    icon={Check}
+                    label="A tiempo"
+                  />
+                  <StatusButton
+                    active={a.status === "approved" && a.late}
+                    disabled={busy === a.userId}
+                    onClick={() => validateAtt(a.userId, "approved", true)}
+                    tone="amber"
+                    icon={Clock3}
+                    label="Tarde"
+                  />
+                  <StatusButton
+                    active={a.status === "rejected"}
+                    disabled={busy === a.userId}
+                    onClick={() => markFalta(a.userId, a.note)}
+                    tone="red"
+                    icon={X}
+                    label="Falta"
+                  />
+                </div>
               </li>
             ))}
             {attendance.length === 0 && (
@@ -392,6 +384,51 @@ export default function PanelClient({
         </div>
       )}
     </div>
+  );
+}
+
+// Clases completas (Tailwind no puede generar clases interpoladas).
+const TONES = {
+  emerald: {
+    on: "bg-emerald-500 text-white shadow-lg shadow-emerald-500/25",
+    off: "bg-white/5 text-slate-400 hover:bg-emerald-500/20 hover:text-emerald-300",
+  },
+  amber: {
+    on: "bg-amber-500 text-white shadow-lg shadow-amber-500/25",
+    off: "bg-white/5 text-slate-400 hover:bg-amber-500/20 hover:text-amber-300",
+  },
+  red: {
+    on: "bg-red-500 text-white shadow-lg shadow-red-500/25",
+    off: "bg-white/5 text-slate-400 hover:bg-red-500/20 hover:text-red-300",
+  },
+} as const;
+
+function StatusButton({
+  active,
+  disabled,
+  onClick,
+  tone,
+  icon: Icon,
+  label,
+}: {
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  tone: keyof typeof TONES;
+  icon: React.ComponentType<{ size?: number }>;
+  label: string;
+}) {
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
+        active ? TONES[tone].on : TONES[tone].off
+      }`}
+    >
+      <Icon size={14} /> {label}
+    </button>
   );
 }
 

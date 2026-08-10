@@ -47,6 +47,12 @@ export interface CourseDoc {
   order: number;
   xp: number; // experiencia que otorga
   createdAt: Date;
+  // Ubicación dentro del plan de estudios (los cursos sueltos que crea el profe
+  // desde la app pueden no tenerla).
+  hours?: number; // intensidad horaria
+  grade?: string; // "Noveno" | "Décimo" | "Once"
+  module?: string; // submódulo, ej. "Lógica de Programación"
+  component?: string; // componente de habilidades
 }
 
 export type ProgressStatus = "pending" | "approved" | "rejected";
@@ -59,6 +65,10 @@ export interface ProgressDoc {
   fileId?: ObjectId | null; // GridFS del certificado PDF
   fileName?: string;
   note?: string; // comentario del profe si se rechaza
+  // "plan" = convalidado desde el Excel del plan de estudios (sin certificado);
+  // ausente = el estudiante subió el PDF. Lo usa scripts/import-plan.mjs para
+  // resincronizar sin tocar los certificados reales.
+  source?: "plan";
   uploadedAt: Date;
   validatedAt?: Date | null;
   validatedBy?: ObjectId | null;

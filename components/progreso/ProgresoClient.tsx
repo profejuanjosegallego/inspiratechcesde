@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
@@ -15,6 +15,7 @@ import {
   Loader2,
   Crown,
   Hand,
+  ChevronDown,
 } from "lucide-react";
 import type { RankRow } from "@/lib/leaderboard";
 import type { CourseWithStatus, ParticipationEntry } from "@/app/(app)/progreso/page";
@@ -129,13 +130,47 @@ export default function ProgresoClient({
 
   const maxXp = Math.max(1, ...ranking.map((r) => r.xp));
 
+  // La ruta se agrupa por grado (Noveno/Décimo/Once) y, dentro, por submódulo
+  // del plan de estudios. `courses` ya viene ordenado, así que los Map conservan
+  // el orden del plan. Los cursos sueltos que cree el profe caen en "Otros".
+  const grades = useMemo(() => {
+    const byGrade = new Map<string, CourseWithStatus[]>();
+    for (const c of courses) {
+      const key = c.grade || "Otros cursos";
+      if (!byGrade.has(key)) byGrade.set(key, []);
+      byGrade.get(key)!.push(c);
+    }
+    return [...byGrade.entries()].map(([grade, list]) => {
+      const byModule = new Map<string, CourseWithStatus[]>();
+      for (const c of list) {
+        const key = c.module || "";
+        if (!byModule.has(key)) byModule.set(key, []);
+        byModule.get(key)!.push(c);
+      }
+      const approved = list.filter((c) => c.status === "approved");
+      return {
+        grade,
+        modules: [...byModule.entries()].map(([name, items]) => ({ name, items })),
+        done: approved.length,
+        total: list.length,
+        doneHours: approved.reduce((a, c) => a + c.hours, 0),
+        hours: list.reduce((a, c) => a + c.hours, 0),
+      };
+    });
+  }, [courses]);
+
+  // Por defecto se despliegan los grados que aún tienen cursos pendientes.
+  const [openGrades, setOpenGrades] = useState<Record<string, boolean>>({});
+  const isOpen = (g: (typeof grades)[number]) => openGrades[g.grade] ?? g.done < g.total;
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-white">Progreso gamificado 🏆</h1>
         <p className="mt-1 text-slate-300">
-          Cada curso de Platzi que completes suma XP y sube de nivel a tu personaje.
-          Sube el PDF del certificado y el profe lo valida.
+          Tu ruta de formación son {totalCourses} cursos de Platzi. Cada uno que
+          completes suma XP y sube de nivel a tu personaje: sube el PDF del
+          certificado y el profe lo valida.
         </p>
       </div>
 
@@ -374,8 +409,16 @@ export default function ProgresoClient({
       <div className="grid gap-6 lg:grid-cols-5">
         {/* Ruta de cursos */}
         <div className="lg:col-span-3">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">Ruta de cursos</h2>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-white">Ruta de cursos</h2>
+              {!isTeacher && totalCourses > 0 && (
+                <p className="text-xs text-slate-400">
+                  {courses.filter((c) => c.status === "approved").length} de{" "}
+                  {totalCourses} completados
+                </p>
+              )}
+            </div>
             {isTeacher && (
               <button
                 onClick={addCourse}
@@ -386,21 +429,86 @@ export default function ProgresoClient({
             )}
           </div>
           <div className="space-y-3">
-            {courses.map((c, i) => (
-              <CourseRow
-                key={c._id}
-                course={c}
-                index={i}
-                isTeacher={isTeacher}
-                uploading={uploading === c._id}
-                onPick={() => fileInputs.current[c._id]?.click()}
-                onDelete={() => deleteCourse(c._id)}
-                inputRef={(el) => {
-                  fileInputs.current[c._id] = el;
-                }}
-                onFile={(f) => upload(c._id, f)}
-              />
-            ))}
+            {grades.map((g) => {
+              const open = isOpen(g);
+              const pct = g.total ? Math.round((g.done / g.total) * 100) : 0;
+              const complete = g.total > 0 && g.done === g.total;
+              return (
+                <section key={g.grade} className="glass overflow-hidden rounded-2xl">
+                  <button
+                    onClick={() =>
+                      setOpenGrades((o) => ({ ...o, [g.grade]: !open }))
+                    }
+                    aria-expanded={open}
+                    className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-white/5"
+                  >
+                    <ChevronDown
+                      size={18}
+                      className={`shrink-0 text-slate-400 transition-transform ${
+                        open ? "" : "-rotate-90"
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-black uppercase tracking-wide text-white">
+                        {g.grade}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {g.done} de {g.total} cursos
+                        {g.hours > 0 && ` · ${g.doneHours}/${g.hours} h`}
+                      </p>
+                    </div>
+                    {complete ? (
+                      <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300">
+                        <CheckCircle2 size={13} /> Completo
+                      </span>
+                    ) : (
+                      <span className="text-sm font-black tabular-nums text-slate-300">
+                        {pct}%
+                      </span>
+                    )}
+                  </button>
+
+                  <div className="h-1 w-full bg-white/5">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.8 }}
+                      className="h-full bg-gradient-to-r from-brand-400 via-magic-400 to-lime-glow"
+                    />
+                  </div>
+
+                  {open && (
+                    <div className="space-y-4 p-4">
+                      {g.modules.map((m) => (
+                        <div key={m.name || "sin-modulo"}>
+                          {m.name && (
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              {m.name}
+                            </p>
+                          )}
+                          <div className="space-y-2">
+                            {m.items.map((c) => (
+                              <CourseRow
+                                key={c._id}
+                                course={c}
+                                isTeacher={isTeacher}
+                                uploading={uploading === c._id}
+                                onPick={() => fileInputs.current[c._id]?.click()}
+                                onDelete={() => deleteCourse(c._id)}
+                                inputRef={(el) => {
+                                  fileInputs.current[c._id] = el;
+                                }}
+                                onFile={(f) => upload(c._id, f)}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
             {courses.length === 0 && (
               <p className="rounded-xl border border-dashed border-white/10 p-6 text-center text-sm text-slate-500">
                 Aún no hay cursos configurados.
@@ -452,7 +560,6 @@ export default function ProgresoClient({
 
 function CourseRow({
   course,
-  index,
   isTeacher,
   uploading,
   onPick,
@@ -461,7 +568,6 @@ function CourseRow({
   onFile,
 }: {
   course: CourseWithStatus;
-  index: number;
   isTeacher: boolean;
   uploading: boolean;
   onPick: () => void;
@@ -481,21 +587,21 @@ function CourseRow({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05 }}
-      className={`glass rounded-2xl p-4 ${
+      className={`rounded-xl bg-white/5 p-3 ${
         status === "approved" ? "ring-1 ring-emerald-500/30" : ""
       }`}
     >
       <div className="flex items-center gap-3">
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-magic-500/40 to-brand-500/40 text-lg">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-magic-500/40 to-brand-500/40">
           {status === "approved" ? "⭐" : "📘"}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-white">{course.title}</p>
+          <p className="font-semibold text-white">{course.title}</p>
           <p className="text-xs text-slate-400">
-            {course.platform} · +{course.xp} XP
+            {course.platform}
+            {course.hours > 0 && ` · ${course.hours} h`} · +{course.xp} XP
           </p>
         </div>
         {badge && (

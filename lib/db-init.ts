@@ -1,23 +1,13 @@
 import { getDb } from "./mongodb";
 import { hashPassword } from "./auth";
 import { SEED_STORIES } from "./seed-stories";
-import type { CourseDoc, StoryDoc, UserDoc } from "./types";
+import { SEED_COURSES } from "./seed-courses";
+import type { StoryDoc, UserDoc } from "./types";
 
 // Cacheamos la promesa del sembrado para que, si varias requests llegan a la
 // vez a una instancia recién arrancada, TODAS esperen la MISMA ejecución en
 // lugar de sembrar en paralelo (lo que causaría carreras y errores 500).
 let seedPromise: Promise<void> | null = null;
-
-// Cursos de Platzi de ejemplo. El profe puede editarlos/agregar más desde la app.
-const SEED_COURSES: Omit<CourseDoc, "_id" | "createdAt">[] = [
-  { title: "Curso de Introducción a la Web", platform: "Platzi", order: 1, xp: 100 },
-  { title: "Curso de HTML y CSS", platform: "Platzi", order: 2, xp: 100 },
-  { title: "Curso de Frontend con Bootstrap", platform: "Platzi", order: 3, xp: 120 },
-  { title: "Curso de JavaScript", platform: "Platzi", order: 4, xp: 150 },
-  { title: "Curso de Python", platform: "Platzi", order: 5, xp: 150 },
-  { title: "Curso de Backend con FastAPI", platform: "Platzi", order: 6, xp: 180 },
-  { title: "Curso de Bases de Datos con MongoDB", platform: "Platzi", order: 7, xp: 180 },
-];
 
 // ¿Es un error de "clave duplicada" (E11000)? Ocurre si dos requests intentan
 // crear el mismo usuario/dato a la vez: es inofensivo, el dato ya quedó creado.

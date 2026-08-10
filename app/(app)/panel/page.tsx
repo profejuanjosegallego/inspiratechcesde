@@ -127,6 +127,7 @@ export default async function PanelPage({
   return (
     <PanelClient
       todayLabel={longDateInBogota()}
+      selectedLabel={longDateInBogota(selectedDate)}
       selectedDate={selectedDate}
       today={today}
       attendance={attendance}

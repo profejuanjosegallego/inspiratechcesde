@@ -15,6 +15,9 @@ export interface CourseWithStatus {
   platform: string;
   xp: number;
   order: number;
+  hours: number;
+  grade: string; // "Noveno" | "Décimo" | "Once" ("" si es un curso suelto)
+  module: string; // submódulo del plan de estudios
   status: "pending" | "approved" | "rejected" | null;
   fileId: string | null;
   fileName: string | null;
@@ -52,6 +55,9 @@ export default async function ProgresoPage() {
       platform: c.platform,
       xp: c.xp,
       order: c.order,
+      hours: c.hours ?? 0,
+      grade: c.grade ?? "",
+      module: c.module ?? "",
       status: (p?.status as CourseWithStatus["status"]) ?? null,
       fileId: p?.fileId ? p.fileId.toString() : null,
       fileName: p?.fileName ?? null,
