@@ -12,7 +12,11 @@ const nextConfig: NextConfig = {
   // usamos el hash del commit (que Vercel expone en VERCEL_GIT_COMMIT_SHA) como
   // id de despliegue. Así, si el navegador tiene assets viejos tras un deploy,
   // Next detecta el desfase y RECARGA la página sola en vez de quedarse colgada.
-  deploymentId: process.env.VERCEL_GIT_COMMIT_SHA,
+  //
+  // OJO: el SHA completo tiene 40 caracteres y Vercel RECHAZA el despliegue si
+  // `deploymentId` pasa de 32 ("must be 32 characters or less"). Lo recortamos:
+  // 12 hex ya identifican el commit sin ambigüedad (es el short SHA de git).
+  deploymentId: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12),
 };
 
 export default nextConfig;
