@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
@@ -20,7 +20,12 @@ import {
   Undo2,
 } from "lucide-react";
 import type { RankRow } from "@/lib/leaderboard";
-import type { CourseWithStatus, ParticipationEntry } from "@/app/(app)/progreso/page";
+import type {
+  CourseWithStatus,
+  ParticipationEntry,
+  StudentCourseState,
+  StudentProgressMap,
+} from "@/app/(app)/progreso/page";
 
 // Orden del plan de estudios. Lo que no esté aquí (cursos sueltos del profe)
 // va al final.
@@ -40,6 +45,7 @@ interface LevelData {
 export default function ProgresoClient({
   isTeacher,
   courses,
+  studentProgress,
   ranking,
   totalCourses,
   participationLog,
@@ -49,6 +55,7 @@ export default function ProgresoClient({
 }: {
   isTeacher: boolean;
   courses: CourseWithStatus[];
+  studentProgress: StudentProgressMap;
   ranking: RankRow[];
   totalCourses: number;
   participationLog: ParticipationEntry[];
@@ -220,6 +227,9 @@ Ej: "lo busqué en Platzi y ya no aparece".`,
       });
   }, [courses]);
 
+  // Qué estudiante tiene el detalle de cursos abierto en el consolidado (profe).
+  const [openStudent, setOpenStudent] = useState<string | null>(null);
+
   // Por defecto se despliegan los grados que aún tienen cursos pendientes.
   const [openGrades, setOpenGrades] = useState<Record<string, boolean>>({});
   const isOpen = (g: (typeof grades)[number]) => openGrades[g.grade] ?? g.done < g.total;
@@ -376,13 +386,16 @@ Ej: "lo busqué en Platzi y ya no aparece".`,
             </div>
           </div>
           <p className="mb-4 text-sm text-slate-400">
-            XP total de cada estudiante, desglosado entre certificados de cursos y participación de clase.
+            XP total de cada estudiante, desglosado entre certificados de cursos y
+            participación de clase. <b className="text-slate-300">Haz clic en una
+            fila</b> para ver sus cursos aprobados, en revisión y pendientes.
           </p>
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-400">
+                  <th className="w-6 px-1 py-2" />
                   <th className="px-2 py-2">Estudiante</th>
                   <th className="px-2 py-2 text-center">Nivel</th>
                   <th className="px-2 py-2 text-center">Cert.</th>
@@ -398,7 +411,22 @@ Ej: "lo busqué en Platzi y ya no aparece".`,
               </thead>
               <tbody>
                 {ranking.map((r) => (
-                  <tr key={r.userId} className="border-t border-white/5">
+                  <Fragment key={r.userId}>
+                  <tr
+                    onClick={() =>
+                      setOpenStudent((o) => (o === r.userId ? null : r.userId))
+                    }
+                    className="cursor-pointer border-t border-white/5 transition hover:bg-white/5"
+                    title="Ver sus cursos aprobados y pendientes"
+                  >
+                    <td className="px-1 py-2.5">
+                      <ChevronDown
+                        size={16}
+                        className={`text-slate-500 transition-transform ${
+                          openStudent === r.userId ? "" : "-rotate-90"
+                        }`}
+                      />
+                    </td>
                     <td className="px-2 py-2.5">
                       <div className="flex items-center gap-2">
                         <span className="text-lg">{r.avatar}</span>
@@ -463,10 +491,21 @@ Ej: "lo busqué en Platzi y ya no aparece".`,
                       </div>
                     </td>
                   </tr>
+                  {openStudent === r.userId && (
+                    <tr className="border-t border-white/5 bg-black/20">
+                      <td colSpan={8} className="px-3 py-4">
+                        <StudentDetail
+                          courses={courses}
+                          state={studentProgress[r.userId] ?? {}}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
                 {ranking.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-2 py-6 text-center text-slate-400">
+                    <td colSpan={8} className="px-2 py-6 text-center text-slate-400">
                       Aún no hay estudiantes registrados.
                     </td>
                   </tr>
@@ -629,6 +668,139 @@ Ej: "lo busqué en Platzi y ya no aparece".`,
             </ul>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Detalle desplegable del consolidado: la ruta completa de UN estudiante vista
+ * por el profe, agrupada por grado, con el estado de cada curso.
+ */
+function StudentDetail({
+  courses,
+  state,
+}: {
+  courses: CourseWithStatus[];
+  state: Record<string, StudentCourseState>;
+}) {
+  // Un curso puede estar en cinco situaciones. Las contamos para el resumen y
+  // las usamos para pintar cada fila.
+  const situationOf = (courseId: string) => {
+    const st = state[courseId];
+    if (!st) return "none" as const;
+    if (st.kind === "unavailable") {
+      return st.status === "approved" ? ("gone" as const) : ("notice" as const);
+    }
+    if (st.status === "approved") return "approved" as const;
+    if (st.status === "pending") return "pending" as const;
+    return "rejected" as const;
+  };
+
+  // `text` va en el tooltip de cada curso; `chip` es [singular, plural] para el
+  // resumen de arriba, que acompaña a un número.
+  const LOOK = {
+    approved: { emoji: "⭐", text: "Aprobado", chip: ["aprobado", "aprobados"], cls: "text-emerald-300 bg-emerald-500/15" },
+    pending: { emoji: "⏳", text: "En revisión", chip: ["por revisar", "por revisar"], cls: "text-amber-300 bg-amber-500/15" },
+    rejected: { emoji: "✖️", text: "Rechazado", chip: ["rechazado", "rechazados"], cls: "text-red-300 bg-red-500/15" },
+    notice: { emoji: "🔎", text: "Aviso: no está en Platzi", chip: ["aviso sin revisar", "avisos sin revisar"], cls: "text-amber-300 bg-amber-500/15" },
+    gone: { emoji: "🚫", text: "Fuera de Platzi", chip: ["fuera de Platzi", "fuera de Platzi"], cls: "text-slate-300 bg-white/10" },
+    none: { emoji: "⬜", text: "Sin empezar", chip: ["sin empezar", "sin empezar"], cls: "text-slate-400 bg-white/5" },
+  } as const;
+
+  const tally = { approved: 0, pending: 0, rejected: 0, notice: 0, gone: 0, none: 0 };
+  for (const c of courses) tally[situationOf(c._id)]++;
+
+  // Mismo agrupado por grado que ve el estudiante, para que el profe y él lean
+  // la ruta igual.
+  const byGrade = new Map<string, CourseWithStatus[]>();
+  for (const c of courses) {
+    const key = c.grade || "Otros cursos";
+    if (!byGrade.has(key)) byGrade.set(key, []);
+    byGrade.get(key)!.push(c);
+  }
+  const groups = [...byGrade.entries()].sort(([a], [b]) => {
+    const ia = GRADE_ORDER.indexOf(a);
+    const ib = GRADE_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+  });
+
+  return (
+    <div className="space-y-4">
+      {/* Resumen */}
+      <div className="flex flex-wrap gap-2">
+        {(["approved", "pending", "rejected", "notice", "gone", "none"] as const)
+          .filter((k) => tally[k] > 0)
+          .map((k) => (
+            <span
+              key={k}
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${LOOK[k].cls}`}
+            >
+              {LOOK[k].emoji} {tally[k]} {LOOK[k].chip[tally[k] === 1 ? 0 : 1]}
+            </span>
+          ))}
+      </div>
+
+      {/* Ruta por grado */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {groups.map(([grade, list]) => {
+          const done = list.filter((c) => situationOf(c._id) === "approved").length;
+          const req = list.filter((c) => situationOf(c._id) !== "gone").length;
+          return (
+            <div key={grade} className="rounded-xl bg-white/5 p-3">
+              <p className="mb-2 flex items-baseline justify-between gap-2">
+                <span className="text-xs font-black uppercase tracking-wide text-white">
+                  {grade}
+                </span>
+                <span className="text-xs tabular-nums text-slate-400">
+                  {done}/{req}
+                </span>
+              </p>
+              <ul className="space-y-1.5">
+                {list.map((c) => {
+                  const sit = situationOf(c._id);
+                  const st = state[c._id];
+                  return (
+                    <li key={c._id} className="flex items-start gap-2 text-xs leading-snug">
+                      <span className="shrink-0" title={LOOK[sit].text}>
+                        {LOOK[sit].emoji}
+                      </span>
+                      <span
+                        className={
+                          sit === "approved"
+                            ? "text-white"
+                            : sit === "gone"
+                            ? "text-slate-500 line-through"
+                            : sit === "none"
+                            ? "text-slate-500"
+                            : "text-slate-300"
+                        }
+                      >
+                        {c.title}
+                        {st?.fileId && (
+                          <a
+                            href={`/api/files/${st.fileId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="ml-1.5 whitespace-nowrap text-brand-300 underline-offset-2 hover:underline"
+                          >
+                            ver PDF
+                          </a>
+                        )}
+                        {sit === "notice" && st?.reason && (
+                          <span className="block text-[11px] text-slate-500">
+                            “{st.reason}”
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

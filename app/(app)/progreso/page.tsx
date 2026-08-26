@@ -26,6 +26,19 @@ export interface CourseWithStatus {
   note: string;
 }
 
+// Estado de UN curso para UN estudiante, tal como lo ve el profe en el detalle
+// desplegable del consolidado. `null` (curso ausente del mapa) = sin empezar.
+export interface StudentCourseState {
+  status: "pending" | "approved" | "rejected";
+  kind: "certificate" | "unavailable";
+  fileId: string | null;
+  note: string;
+  reason: string;
+}
+
+// userId → (courseId → estado). Solo se construye para el profe.
+export type StudentProgressMap = Record<string, Record<string, StudentCourseState>>;
+
 export interface ParticipationEntry {
   _id: string;
   userId: string;
@@ -41,11 +54,37 @@ export default async function ProgresoPage() {
   const user = (await getSession())!;
   const db = await getDb();
 
-  const [coursesRaw, myProgressRaw, ranking] = await Promise.all([
+  const isTeacher = user.role === "profesor";
+
+  // El profe necesita el progreso de todo el curso para el detalle por
+  // estudiante; el estudiante solo el suyo.
+  const [coursesRaw, progressRaw, ranking] = await Promise.all([
     db.collection("courses").find().sort({ order: 1 }).toArray(),
-    db.collection("progress").find({ userId: new ObjectId(user.id) }).toArray(),
+    db
+      .collection("progress")
+      .find(isTeacher ? {} : { userId: new ObjectId(user.id) })
+      .toArray(),
     computeLeaderboard(db),
   ]);
+
+  const myProgressRaw = isTeacher
+    ? progressRaw.filter((p) => p.userId.toString() === user.id)
+    : progressRaw;
+
+  // Detalle por estudiante (solo profe): qué tiene cada uno en cada curso.
+  const studentProgress: StudentProgressMap = {};
+  if (isTeacher) {
+    for (const p of progressRaw) {
+      const uid = p.userId.toString();
+      (studentProgress[uid] ??= {})[p.courseId.toString()] = {
+        status: p.status,
+        kind: (p.kind as StudentCourseState["kind"]) ?? "certificate",
+        fileId: p.fileId ? p.fileId.toString() : null,
+        note: p.note ?? "",
+        reason: p.reason ?? "",
+      };
+    }
+  }
 
   const progressMap = new Map(myProgressRaw.map((p) => [p.courseId.toString(), p]));
 
@@ -76,7 +115,7 @@ export default async function ProgresoPage() {
 
   // Registro reciente de participación (solo lo necesita el profe)
   let participationLog: ParticipationEntry[] = [];
-  if (user.role === "profesor") {
+  if (isTeacher) {
     const nameMap = new Map(ranking.map((r) => [r.userId, r]));
     const logRaw = await db
       .collection("participation")
@@ -100,8 +139,9 @@ export default async function ProgresoPage() {
 
   return (
     <ProgresoClient
-      isTeacher={user.role === "profesor"}
+      isTeacher={isTeacher}
       courses={serialize(courses)}
+      studentProgress={studentProgress}
       ranking={ranking}
       totalCourses={me?.total ?? coursesRaw.length}
       participationLog={participationLog}
