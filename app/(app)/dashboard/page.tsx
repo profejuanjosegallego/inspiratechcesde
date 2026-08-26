@@ -23,12 +23,16 @@ export default async function DashboardPage() {
   ]);
 
   const courses = await db.collection("courses").find().toArray();
-  const totalCourses = courses.length;
 
-  const myApproved = await db
+  const approvedDocs = await db
     .collection("progress")
     .find({ userId: new ObjectId(user.id), status: "approved" })
     .toArray();
+  // Los cursos que el profe confirmó que ya no están en Platzi no dan XP y
+  // salen del total de la ruta: no bloquean el 100 % del estudiante.
+  const unavailable = approvedDocs.filter((p) => p.kind === "unavailable").length;
+  const myApproved = approvedDocs.filter((p) => p.kind !== "unavailable");
+  const totalCourses = Math.max(0, courses.length - unavailable);
   const courseXp = myApproved.reduce((sum, p) => {
     const course = courses.find((c) => c._id.toString() === p.courseId.toString());
     return sum + (course?.xp || 0);

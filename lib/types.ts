@@ -57,11 +57,20 @@ export interface CourseDoc {
 
 export type ProgressStatus = "pending" | "approved" | "rejected";
 
+// Qué está reclamando el estudiante en este registro:
+//   "certificate" → subió el PDF del certificado (caso normal; también cuando
+//                   el campo está ausente, por los registros antiguos).
+//   "unavailable" → el curso ya no aparece en Platzi. No otorga XP y, una vez
+//                   aprobado por el profe, sale del total de la ruta.
+export type ProgressKind = "certificate" | "unavailable";
+
 export interface ProgressDoc {
   _id?: ObjectId;
   userId: ObjectId;
   courseId: ObjectId;
   status: ProgressStatus;
+  kind?: ProgressKind; // ausente = "certificate"
+  reason?: string; // explicación del estudiante al marcar "no está en Platzi"
   fileId?: ObjectId | null; // GridFS del certificado PDF
   fileName?: string;
   note?: string; // comentario del profe si se rechaza

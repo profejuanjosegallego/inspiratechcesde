@@ -113,5 +113,27 @@ async function runSeed() {
     } catch (e) {
       if (!isDuplicateKey(e)) throw e;
     }
+  } else {
+    // La base ya tiene los cursos, pero su metadata del plan (grado, submódulo,
+    // horas) puede venir de una versión anterior del Excel o del lector. La
+    // resincronizamos por título: es idempotente y no toca los cursos sueltos
+    // que el profe haya creado desde la app.
+    await db.collection("courses").bulkWrite(
+      SEED_COURSES.map((c) => ({
+        updateOne: {
+          filter: { title: c.title },
+          update: {
+            $set: {
+              order: c.order,
+              hours: c.hours,
+              grade: c.grade,
+              module: c.module,
+              component: c.component,
+            },
+          },
+        },
+      })),
+      { ordered: false }
+    );
   }
 }

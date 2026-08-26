@@ -19,6 +19,8 @@ export interface CourseWithStatus {
   grade: string; // "Noveno" | "Décimo" | "Once" ("" si es un curso suelto)
   module: string; // submódulo del plan de estudios
   status: "pending" | "approved" | "rejected" | null;
+  kind: "certificate" | "unavailable";
+  reason: string; // motivo que dio el estudiante al marcarlo como no disponible
   fileId: string | null;
   fileName: string | null;
   note: string;
@@ -59,6 +61,8 @@ export default async function ProgresoPage() {
       grade: c.grade ?? "",
       module: c.module ?? "",
       status: (p?.status as CourseWithStatus["status"]) ?? null,
+      kind: (p?.kind as CourseWithStatus["kind"]) ?? "certificate",
+      reason: p?.reason ?? "",
       fileId: p?.fileId ? p.fileId.toString() : null,
       fileName: p?.fileName ?? null,
       note: p?.note ?? "",
@@ -99,7 +103,7 @@ export default async function ProgresoPage() {
       isTeacher={user.role === "profesor"}
       courses={serialize(courses)}
       ranking={ranking}
-      totalCourses={coursesRaw.length}
+      totalCourses={me?.total ?? coursesRaw.length}
       participationLog={participationLog}
       level={{
         level: level.level,

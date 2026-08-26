@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { CalendarCheck, Award, Check, Clock3, X, FileText, Users, Trash2, BadgeCheck, MailWarning, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarCheck, Award, Check, Clock3, X, FileText, Users, Trash2, BadgeCheck, MailWarning, MessageSquare, ChevronLeft, ChevronRight, SearchX } from "lucide-react";
 import type { AttRow, CertRow, StudentRow } from "@/app/(app)/panel/page";
 
 function fmtTime(iso: string | null) {
@@ -116,10 +116,14 @@ export default function PanelClient({
     }
   }
 
-  async function validateCert(id: string, status: string) {
+  async function validateCert(id: string, status: string, gone = false) {
     let note = "";
     if (status === "rejected") {
-      note = prompt("Motivo del rechazo (opcional):") || "";
+      note = prompt(
+        gone
+          ? "¿Dónde lo encuentra? (esta nota le llega al estudiante):"
+          : "Motivo del rechazo (opcional):"
+      ) || "";
     }
     setBusy(id);
     const res = await fetch(`/api/progress/${id}`, {
@@ -129,7 +133,15 @@ export default function PanelClient({
     });
     setBusy(null);
     if (res.ok) {
-      toast.success(status === "approved" ? "¡Certificado aprobado! ⭐" : "Certificado rechazado");
+      toast.success(
+        gone
+          ? status === "approved"
+            ? "Curso sacado de la ruta de ese estudiante 🚫"
+            : "Aviso rechazado: el curso sigue en su ruta"
+          : status === "approved"
+          ? "¡Certificado aprobado! ⭐"
+          : "Certificado rechazado"
+      );
       router.refresh();
     } else toast.error("Error al validar");
   }
@@ -154,7 +166,7 @@ export default function PanelClient({
           active={tab === "certificados"}
           onClick={() => setTab("certificados")}
           icon={Award}
-          label="Certificados"
+          label="Certificados y avisos"
           badge={pendingCerts}
         />
         <TabButton
@@ -286,7 +298,11 @@ export default function PanelClient({
               No hay certificados subidos todavía.
             </p>
           )}
-          {certs.map((c) => (
+          {certs.map((c) => {
+            // Un aviso de "no está en Platzi" no trae PDF: lo que se valida es
+            // si el curso sale o no de la ruta de ese estudiante.
+            const gone = c.kind === "unavailable";
+            return (
             <motion.div
               key={c._id}
               initial={{ opacity: 0, y: 8 }}
@@ -296,7 +312,19 @@ export default function PanelClient({
               <span className="text-2xl">{c.avatar}</span>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-white">{c.studentName}</p>
-                <p className="text-xs text-slate-400">{c.courseTitle}</p>
+                <p className="text-xs text-slate-400">
+                  {c.courseGrade && <span className="text-slate-500">{c.courseGrade} · </span>}
+                  {c.courseTitle}
+                </p>
+                {gone && (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-300">
+                    <SearchX size={13} className="shrink-0" />
+                    <span>
+                      Dice que ya no está en Platzi
+                      {c.reason && <span className="text-slate-400"> — “{c.reason}”</span>}
+                    </span>
+                  </p>
+                )}
               </div>
               {c.fileId && (
                 <a
@@ -312,32 +340,51 @@ export default function PanelClient({
                 <div className="flex gap-2">
                   <button
                     disabled={busy === c._id}
-                    onClick={() => validateCert(c._id, "approved")}
+                    onClick={() => validateCert(c._id, "approved", gone)}
                     className="flex items-center gap-1 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/30"
                   >
-                    <Check size={14} /> Aprobar
+                    <Check size={14} /> {gone ? "Sacarlo de la ruta" : "Aprobar"}
                   </button>
                   <button
                     disabled={busy === c._id}
-                    onClick={() => validateCert(c._id, "rejected")}
+                    onClick={() => validateCert(c._id, "rejected", gone)}
                     className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/30"
                   >
-                    <X size={14} /> Rechazar
+                    <X size={14} /> {gone ? "Sí está" : "Rechazar"}
                   </button>
                 </div>
               ) : (
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    c.status === "approved"
-                      ? "bg-emerald-500/15 text-emerald-300"
-                      : "bg-red-500/15 text-red-300"
-                  }`}
-                >
-                  {c.status === "approved" ? "Aprobado ⭐" : "Rechazado"}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      c.status === "approved"
+                        ? gone
+                          ? "bg-white/10 text-slate-300"
+                          : "bg-emerald-500/15 text-emerald-300"
+                        : "bg-red-500/15 text-red-300"
+                    }`}
+                  >
+                    {c.status === "approved"
+                      ? gone
+                        ? "Fuera de la ruta 🚫"
+                        : "Aprobado ⭐"
+                      : gone
+                      ? "Sigue en la ruta"
+                      : "Rechazado"}
+                  </span>
+                  <button
+                    disabled={busy === c._id}
+                    onClick={() => validateCert(c._id, "pending", gone)}
+                    className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-slate-400 hover:bg-white/10 hover:text-white"
+                    title="Volver a dejarlo en revisión"
+                  >
+                    Deshacer
+                  </button>
+                </div>
               )}
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       )}
 

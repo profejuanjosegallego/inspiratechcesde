@@ -9,6 +9,8 @@ export interface RankRow {
   courseXp: number;
   participationXp: number;
   approved: number;
+  unavailable: number; // cursos que el profe confirmó que ya no están en Platzi
+  total: number; // cursos de la ruta que este estudiante SÍ debe completar
   level: number;
   title: string;
   emoji: string;
@@ -28,7 +30,12 @@ export async function computeLeaderboard(db: Db): Promise<RankRow[]> {
 
   const rows: RankRow[] = students.map((u) => {
     const uid = u._id.toString();
-    const mine = approved.filter((p) => p.userId.toString() === uid);
+    const all = approved.filter((p) => p.userId.toString() === uid);
+    // Un curso "no disponible en Platzi" aprobado por el profe no da XP: sale
+    // del total de la ruta para que el estudiante no quede bloqueado por algo
+    // que no depende de él.
+    const gone = all.filter((p) => p.kind === "unavailable");
+    const mine = all.filter((p) => p.kind !== "unavailable");
     const cXp = mine.reduce((s, p) => s + (courseXp.get(p.courseId.toString()) || 0), 0);
     const pXp = participation
       .filter((p) => p.userId.toString() === uid)
@@ -43,6 +50,8 @@ export async function computeLeaderboard(db: Db): Promise<RankRow[]> {
       courseXp: cXp,
       participationXp: pXp,
       approved: mine.length,
+      unavailable: gone.length,
+      total: Math.max(0, courses.length - gone.length),
       level: lvl.level,
       title: lvl.title,
       emoji: lvl.emoji,

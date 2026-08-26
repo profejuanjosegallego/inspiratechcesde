@@ -25,6 +25,11 @@ export interface CertRow {
   studentName: string;
   avatar: string;
   courseTitle: string;
+  courseGrade: string;
+  // "certificate" = subió el PDF; "unavailable" = avisa que el curso ya no
+  // aparece en Platzi (no hay PDF, se valida el aviso).
+  kind: "certificate" | "unavailable";
+  reason: string;
   fileId: string | null;
   fileName: string | null;
   uploadedAt: string;
@@ -101,6 +106,9 @@ export default async function PanelPage({
         studentName: s?.name ?? "Estudiante",
         avatar: s?.avatar ?? "🙂",
         courseTitle: c?.title ?? "Curso",
+        courseGrade: c?.grade ?? "",
+        kind: (p.kind as CertRow["kind"]) ?? "certificate",
+        reason: p.reason ?? "",
         fileId: p.fileId ? p.fileId.toString() : null,
         fileName: p.fileName ?? null,
         uploadedAt: new Date(p.uploadedAt).toISOString(),

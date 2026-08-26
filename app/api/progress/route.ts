@@ -57,6 +57,9 @@ export const POST = handler(async (req) => {
     { userId: new ObjectId(user.id), courseId: new ObjectId(courseId) },
     {
       $set: {
+        // Subir el PDF revierte cualquier marca previa de "no está en Platzi".
+        kind: "certificate",
+        reason: "",
         status: "pending",
         fileId: uploadStream.id,
         fileName: file.name,

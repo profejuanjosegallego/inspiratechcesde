@@ -16,9 +16,15 @@ import {
   Crown,
   Hand,
   ChevronDown,
+  SearchX,
+  Undo2,
 } from "lucide-react";
 import type { RankRow } from "@/lib/leaderboard";
 import type { CourseWithStatus, ParticipationEntry } from "@/app/(app)/progreso/page";
+
+// Orden del plan de estudios. Lo que no esté aquí (cursos sueltos del profe)
+// va al final.
+const GRADE_ORDER = ["Noveno", "Décimo", "Once"];
 
 interface LevelData {
   level: number;
@@ -104,6 +110,46 @@ export default function ProgresoClient({
     }
   }
 
+  // El estudiante avisa que el curso ya no aparece en el catálogo de Platzi.
+  // Queda en revisión: el profe decide si lo saca de la ruta.
+  async function markUnavailable(courseId: string, title: string) {
+    const reason = prompt(
+      `¿Por qué no puedes hacer "${title}"?
+Ej: "lo busqué en Platzi y ya no aparece".`,
+      ""
+    );
+    if (reason === null) return;
+    setUploading(courseId);
+    const res = await fetch("/api/progress/unavailable", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ courseId, reason }),
+    });
+    setUploading(null);
+    if (res.ok) {
+      toast.success("Avisado. El profe lo revisará 🔎");
+      router.refresh();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "No se pudo marcar");
+    }
+  }
+
+  async function undoUnavailable(courseId: string) {
+    setUploading(courseId);
+    const res = await fetch(`/api/progress/unavailable?courseId=${courseId}`, {
+      method: "DELETE",
+    });
+    setUploading(null);
+    if (res.ok) {
+      toast.success("Marca retirada");
+      router.refresh();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "No se pudo retirar");
+    }
+  }
+
   async function addCourse() {
     const title = prompt("Nombre del curso de Platzi:");
     if (!title) return;
@@ -130,9 +176,15 @@ export default function ProgresoClient({
 
   const maxXp = Math.max(1, ...ranking.map((r) => r.xp));
 
-  // La ruta se agrupa por grado (Noveno/Décimo/Once) y, dentro, por submódulo
-  // del plan de estudios. `courses` ya viene ordenado, así que los Map conservan
-  // el orden del plan. Los cursos sueltos que cree el profe caen en "Otros".
+  // ¿El profe ya confirmó que este curso salió del catálogo de Platzi? Entonces
+  // no cuenta ni en el numerador ni en el denominador de la ruta.
+  const isExcluded = (c: CourseWithStatus) =>
+    c.kind === "unavailable" && c.status === "approved";
+
+  // La ruta se agrupa por grado (Noveno → Décimo → Once) y, dentro, por
+  // submódulo del plan de estudios. `courses` ya viene ordenado por el plan, así
+  // que los Map conservan ese orden. Los cursos sueltos que cree el profe caen
+  // en "Otros cursos", al final.
   const grades = useMemo(() => {
     const byGrade = new Map<string, CourseWithStatus[]>();
     for (const c of courses) {
@@ -140,23 +192,32 @@ export default function ProgresoClient({
       if (!byGrade.has(key)) byGrade.set(key, []);
       byGrade.get(key)!.push(c);
     }
-    return [...byGrade.entries()].map(([grade, list]) => {
-      const byModule = new Map<string, CourseWithStatus[]>();
-      for (const c of list) {
-        const key = c.module || "";
-        if (!byModule.has(key)) byModule.set(key, []);
-        byModule.get(key)!.push(c);
-      }
-      const approved = list.filter((c) => c.status === "approved");
-      return {
-        grade,
-        modules: [...byModule.entries()].map(([name, items]) => ({ name, items })),
-        done: approved.length,
-        total: list.length,
-        doneHours: approved.reduce((a, c) => a + c.hours, 0),
-        hours: list.reduce((a, c) => a + c.hours, 0),
-      };
-    });
+    return [...byGrade.entries()]
+      .sort(([a], [b]) => {
+        const ia = GRADE_ORDER.indexOf(a);
+        const ib = GRADE_ORDER.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+      })
+      .map(([grade, list]) => {
+        const byModule = new Map<string, CourseWithStatus[]>();
+        for (const c of list) {
+          const key = c.module || "";
+          if (!byModule.has(key)) byModule.set(key, []);
+          byModule.get(key)!.push(c);
+        }
+        const excluded = list.filter(isExcluded);
+        const required = list.filter((c) => !isExcluded(c));
+        const approved = required.filter((c) => c.status === "approved");
+        return {
+          grade,
+          modules: [...byModule.entries()].map(([name, items]) => ({ name, items })),
+          done: approved.length,
+          total: required.length,
+          excluded: excluded.length,
+          doneHours: approved.reduce((a, c) => a + c.hours, 0),
+          hours: required.reduce((a, c) => a + c.hours, 0),
+        };
+      });
   }, [courses]);
 
   // Por defecto se despliegan los grados que aún tienen cursos pendientes.
@@ -168,9 +229,11 @@ export default function ProgresoClient({
       <div>
         <h1 className="text-3xl font-black text-white">Progreso gamificado 🏆</h1>
         <p className="mt-1 text-slate-300">
-          Tu ruta de formación son {totalCourses} cursos de Platzi. Cada uno que
-          completes suma XP y sube de nivel a tu personaje: sube el PDF del
-          certificado y el profe lo valida.
+          Tu ruta de formación son {totalCourses} cursos de Platzi, organizados
+          por grado (Noveno, Décimo y Once). Cada uno que completes suma XP y
+          sube de nivel a tu personaje: sube el PDF del certificado y el profe lo
+          valida. Si un curso ya no aparece en Platzi, márcalo y el profe lo saca
+          de tu ruta.
         </p>
       </div>
 
@@ -350,7 +413,15 @@ export default function ProgresoClient({
                       </span>
                     </td>
                     <td className="px-2 py-2.5 text-center text-slate-300">
-                      {r.approved}/{totalCourses}
+                      {r.approved}/{r.total}
+                      {r.unavailable > 0 && (
+                        <span
+                          className="ml-1 text-[11px] text-slate-500"
+                          title={`${r.unavailable} curso(s) que ya no están en Platzi`}
+                        >
+                          (−{r.unavailable})
+                        </span>
+                      )}
                     </td>
                     <td className="px-2 py-2.5 text-right font-semibold tabular-nums text-slate-200">
                       {r.courseXp}
@@ -414,8 +485,10 @@ export default function ProgresoClient({
               <h2 className="text-xl font-bold text-white">Ruta de cursos</h2>
               {!isTeacher && totalCourses > 0 && (
                 <p className="text-xs text-slate-400">
-                  {courses.filter((c) => c.status === "approved").length} de{" "}
+                  {courses.filter((c) => c.status === "approved" && !isExcluded(c)).length} de{" "}
                   {totalCourses} completados
+                  {courses.filter(isExcluded).length > 0 &&
+                    ` · ${courses.filter(isExcluded).length} fuera de Platzi`}
                 </p>
               )}
             </div>
@@ -455,6 +528,7 @@ export default function ProgresoClient({
                       <p className="text-xs text-slate-400">
                         {g.done} de {g.total} cursos
                         {g.hours > 0 && ` · ${g.doneHours}/${g.hours} h`}
+                        {g.excluded > 0 && ` · ${g.excluded} fuera de Platzi`}
                       </p>
                     </div>
                     {complete ? (
@@ -499,6 +573,8 @@ export default function ProgresoClient({
                                   fileInputs.current[c._id] = el;
                                 }}
                                 onFile={(f) => upload(c._id, f)}
+                                onMarkUnavailable={() => markUnavailable(c._id, c.title)}
+                                onUndoUnavailable={() => undoUnavailable(c._id)}
                               />
                             ))}
                           </div>
@@ -544,7 +620,7 @@ export default function ProgresoClient({
                       {r.name.split(" ").slice(0, 2).join(" ")}
                     </p>
                     <p className="text-[11px] text-slate-400">
-                      Nv {r.level} · {r.approved} cert. · {r.participationXp} part.
+                      Nv {r.level} · {r.approved}/{r.total} cert. · {r.participationXp} part.
                     </p>
                   </div>
                   <span className="text-sm font-black text-brand-200">{r.xp}</span>
@@ -566,6 +642,8 @@ function CourseRow({
   onDelete,
   inputRef,
   onFile,
+  onMarkUnavailable,
+  onUndoUnavailable,
 }: {
   course: CourseWithStatus;
   isTeacher: boolean;
@@ -574,34 +652,54 @@ function CourseRow({
   onDelete: () => void;
   inputRef: (el: HTMLInputElement | null) => void;
   onFile: (f: File) => void;
+  onMarkUnavailable: () => void;
+  onUndoUnavailable: () => void;
 }) {
   const status = course.status;
-  const badge =
-    status === "approved"
-      ? { icon: CheckCircle2, text: "Aprobado", cls: "text-emerald-300 bg-emerald-500/15" }
+  // Un registro "unavailable" reutiliza los mismos estados que un certificado,
+  // pero significan otra cosa: pending = el profe aún no revisa el aviso,
+  // approved = confirmó que salió del catálogo, rejected = sí está, hay que hacerlo.
+  const gone = course.kind === "unavailable";
+  const excluded = gone && status === "approved";
+
+  const badge = gone
+    ? status === "approved"
+      ? { icon: SearchX, text: "Fuera de Platzi", cls: "text-slate-300 bg-white/10" }
       : status === "pending"
-      ? { icon: Clock, text: "En revisión", cls: "text-amber-300 bg-amber-500/15" }
-      : status === "rejected"
-      ? { icon: XCircle, text: "Rechazado", cls: "text-red-300 bg-red-500/15" }
-      : null;
+      ? { icon: Clock, text: "Aviso en revisión", cls: "text-amber-300 bg-amber-500/15" }
+      : { icon: XCircle, text: "Sí está en Platzi", cls: "text-red-300 bg-red-500/15" }
+    : status === "approved"
+    ? { icon: CheckCircle2, text: "Aprobado", cls: "text-emerald-300 bg-emerald-500/15" }
+    : status === "pending"
+    ? { icon: Clock, text: "En revisión", cls: "text-amber-300 bg-amber-500/15" }
+    : status === "rejected"
+    ? { icon: XCircle, text: "Rechazado", cls: "text-red-300 bg-red-500/15" }
+    : null;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       className={`rounded-xl bg-white/5 p-3 ${
-        status === "approved" ? "ring-1 ring-emerald-500/30" : ""
+        excluded
+          ? "opacity-60 ring-1 ring-white/10"
+          : !gone && status === "approved"
+          ? "ring-1 ring-emerald-500/30"
+          : ""
       }`}
     >
       <div className="flex items-center gap-3">
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-magic-500/40 to-brand-500/40">
-          {status === "approved" ? "⭐" : "📘"}
+          {gone ? "🚫" : status === "approved" ? "⭐" : "📘"}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-white">{course.title}</p>
+          <p className={`font-semibold text-white ${excluded ? "line-through" : ""}`}>
+            {course.title}
+          </p>
           <p className="text-xs text-slate-400">
             {course.platform}
-            {course.hours > 0 && ` · ${course.hours} h`} · +{course.xp} XP
+            {course.hours > 0 && ` · ${course.hours} h`}
+            {excluded ? " · no cuenta en tu ruta" : ` · +${course.xp} XP`}
           </p>
         </div>
         {badge && (
@@ -628,8 +726,14 @@ function CourseRow({
         </p>
       )}
 
+      {gone && course.reason && (
+        <p className="mt-2 rounded-lg bg-black/20 p-2 text-xs text-slate-300">
+          Tu aviso: {course.reason}
+        </p>
+      )}
+
       {!isTeacher && (
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
             ref={inputRef}
             type="file"
@@ -641,7 +745,10 @@ function CourseRow({
               e.target.value = "";
             }}
           />
-          {status !== "approved" && (
+          {/* Subir el certificado: siempre disponible salvo que ya esté aprobado.
+              Si el curso está marcado como fuera de Platzi, subir el PDF revierte
+              la marca (por eso sigue visible incluso cuando ya está excluido). */}
+          {!(status === "approved" && !gone) && (
             <button
               onClick={onPick}
               disabled={uploading}
@@ -652,9 +759,33 @@ function CourseRow({
               ) : (
                 <Upload size={15} />
               )}
-              {status ? "Reemplazar PDF" : "Subir certificado"}
+              {gone ? "Sí lo hice: subir PDF" : status ? "Reemplazar PDF" : "Subir certificado"}
             </button>
           )}
+
+          {/* Avisar que el curso ya no está en el catálogo de Platzi. */}
+          {!gone && status !== "approved" && (
+            <button
+              onClick={onMarkUnavailable}
+              disabled={uploading}
+              className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-60"
+              title="Este curso ya no aparece en Platzi"
+            >
+              <SearchX size={15} /> No está en Platzi
+            </button>
+          )}
+
+          {/* Retirar el aviso mientras el profe no lo haya aprobado. */}
+          {gone && status !== "approved" && (
+            <button
+              onClick={onUndoUnavailable}
+              disabled={uploading}
+              className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-60"
+            >
+              <Undo2 size={15} /> Retirar aviso
+            </button>
+          )}
+
           {course.fileId && (
             <a
               href={`/api/files/${course.fileId}`}

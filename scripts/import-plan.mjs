@@ -151,24 +151,33 @@ try {
     let keep = 0;
     for (const [courseId] of wanted) {
       const prev = mineByCourse.get(courseId);
-      if (prev) {
+      if (prev && prev.kind !== "unavailable") {
         keep++;
         continue; // ya existe (con PDF o del plan): no se toca
       }
+      // Si estaba marcado como "no está en Platzi" pero el Excel lo da por
+      // terminado, manda el Excel: se convierte en curso aprobado del plan.
       add++;
       if (APPLY) {
-        await db.collection("progress").insertOne({
-          userId: user._id,
-          courseId: new ObjectId(courseId),
-          status: "approved",
-          fileId: null,
-          fileName: null,
-          note: "",
-          source: "plan", // vino del Excel, no de un certificado subido
-          uploadedAt: now,
-          validatedAt: now,
-          validatedBy: teacher?._id ?? null,
-        });
+        await db.collection("progress").updateOne(
+          { userId: user._id, courseId: new ObjectId(courseId) },
+          {
+            $set: {
+              status: "approved",
+              kind: "certificate",
+              reason: "",
+              fileId: null,
+              fileName: null,
+              note: "",
+              source: "plan", // vino del Excel, no de un certificado subido
+              uploadedAt: now,
+              validatedAt: now,
+              validatedBy: teacher?._id ?? null,
+            },
+            $setOnInsert: { userId: user._id, courseId: new ObjectId(courseId) },
+          },
+          { upsert: true }
+        );
       }
     }
 

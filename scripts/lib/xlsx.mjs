@@ -170,16 +170,28 @@ export function readWorkbook(filePath) {
       merges.push({ from: parseRef(mc[1]), to: parseRef(mc[2]), anchor: mc[1] });
     }
 
-    const cell = (ref) => {
-      const direct = cells.get(ref);
-      if (direct && (direct.value !== "" || direct.fill)) return direct;
+    // OJO: el VALOR y el RELLENO se resuelven por separado. Una celda cubierta
+    // por un merge existe en el XML (a veces con su propio relleno) pero SIN
+    // valor: si devolviéramos esa celda tal cual solo por tener `fill`, el
+    // grado de todo el bloque se perdería. El valor siempre viene de la
+    // esquina del merge; el relleno, de la celda concreta.
+    const anchorOf = (ref) => {
       const { col, row } = parseRef(ref);
       for (const m2 of merges) {
         if (col >= m2.from.col && col <= m2.to.col && row >= m2.from.row && row <= m2.to.row) {
-          return cells.get(m2.anchor) ?? { value: "", fill: null };
+          return m2.anchor;
         }
       }
-      return direct ?? { value: "", fill: null };
+      return null;
+    };
+
+    const cell = (ref) => {
+      const direct = cells.get(ref) ?? { value: "", fill: null };
+      if (direct.value !== "") return direct;
+      const anchor = anchorOf(ref);
+      if (!anchor || anchor === ref) return direct;
+      const src = cells.get(anchor);
+      return { value: src?.value ?? "", fill: direct.fill ?? src?.fill ?? null };
     };
 
     sheets.push({ name: name.trim(), cell, cells, merges });
