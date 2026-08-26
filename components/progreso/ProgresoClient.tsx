@@ -759,7 +759,11 @@ function CourseRow({
               ) : (
                 <Upload size={15} />
               )}
-              {gone ? "Sí lo hice: subir PDF" : status ? "Reemplazar PDF" : "Subir certificado"}
+              {excluded
+                ? "Sí lo hice: subir PDF"
+                : status && !gone
+                ? "Reemplazar PDF"
+                : "Subir certificado"}
             </button>
           )}
 
