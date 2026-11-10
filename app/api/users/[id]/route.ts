@@ -2,8 +2,51 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { getBucket } from "@/lib/gridfs";
 import { json, fail, requireTeacher } from "@/lib/api";
+import { hashPassword } from "@/lib/auth";
 
 export const runtime = "nodejs";
+
+// El profe le asigna una contraseña nueva a un estudiante que la olvidó.
+// También deja la cuenta verificada, para que pueda entrar de una vez.
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await requireTeacher();
+    const { id } = await params;
+    if (!ObjectId.isValid(id)) return fail("Id inválido.");
+
+    const { password } = await req.json().catch(() => ({}));
+    const pass = typeof password === "string" ? password.trim() : "";
+    if (pass.length < 6) return fail("La contraseña debe tener al menos 6 caracteres.");
+
+    const db = await getDb();
+    const userId = new ObjectId(id);
+    const target = await db.collection("users").findOne({ _id: userId });
+    if (!target) return fail("El usuario no existe.", 404);
+    if (target.role !== "estudiante") {
+      return fail("Solo puedes cambiar la contraseña de estudiantes.", 403);
+    }
+
+    await db.collection("users").updateOne(
+      { _id: userId },
+      {
+        $set: {
+          passwordHash: await hashPassword(pass),
+          verified: true,
+          verificationCode: null,
+          verificationExpires: null,
+        },
+      }
+    );
+    return json({ ok: true });
+  } catch (e) {
+    if (e instanceof Response) return e;
+    console.error(e);
+    return fail("Error al cambiar la contraseña.", 500);
+  }
+}
 
 // El profe elimina un estudiante y TODOS sus datos asociados: asistencia,
 // certificados (con sus PDFs en GridFS), progreso, participación y mensajes.

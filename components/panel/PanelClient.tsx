@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { CalendarCheck, Award, Check, Clock3, X, FileText, Users, Trash2, BadgeCheck, MailWarning, MessageSquare, ChevronLeft, ChevronRight, SearchX } from "lucide-react";
+import { CalendarCheck, Award, Check, Clock3, X, FileText, Users, Trash2, BadgeCheck, MailWarning, MessageSquare, ChevronLeft, ChevronRight, SearchX, Download, KeyRound, Shuffle, Copy } from "lucide-react";
 import type { AttRow, CertRow, StudentRow } from "@/app/(app)/panel/page";
 
 function fmtTime(iso: string | null) {
@@ -40,6 +40,43 @@ export default function PanelClient({
   const [navPending, startNav] = useTransition();
 
   const isToday = selectedDate === today;
+
+  // Estudiante al que el profe le está asignando contraseña (modal abierto).
+  const [pwFor, setPwFor] = useState<StudentRow | null>(null);
+  const [pwValue, setPwValue] = useState("");
+  const [pwDone, setPwDone] = useState<string | null>(null); // contraseña ya guardada
+
+  const totalPdfs = students.reduce((n, s) => n + s.certCount, 0);
+
+  function openPassword(s: StudentRow) {
+    setPwFor(s);
+    setPwValue(randomPassword());
+    setPwDone(null);
+  }
+
+  async function savePassword() {
+    if (!pwFor) return;
+    const pass = pwValue.trim();
+    if (pass.length < 6) {
+      toast.error("Mínimo 6 caracteres");
+      return;
+    }
+    setBusy(pwFor._id);
+    const res = await fetch(`/api/users/${pwFor._id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pass }),
+    });
+    setBusy(null);
+    if (res.ok) {
+      toast.success("Contraseña asignada 🔑");
+      setPwDone(pass);
+      router.refresh();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "Error al cambiar la contraseña");
+    }
+  }
 
   const pendingCerts = certs.filter((c) => c.status === "pending").length;
   const pendingAtt = attendance.filter((a) => a.status === "pending").length;
@@ -293,6 +330,7 @@ export default function PanelClient({
 
       {tab === "certificados" && (
         <div className="space-y-3">
+          {totalPdfs > 0 && <DownloadAllBar total={totalPdfs} />}
           {certs.length === 0 && (
             <p className="glass rounded-2xl p-6 text-center text-sm text-slate-400">
               No hay certificados subidos todavía.
@@ -389,6 +427,8 @@ export default function PanelClient({
       )}
 
       {tab === "estudiantes" && (
+        <div className="space-y-3">
+        {totalPdfs > 0 && <DownloadAllBar total={totalPdfs} />}
         <div className="glass overflow-hidden rounded-2xl">
           <ul className="divide-y divide-white/5">
             {students.map((s) => (
@@ -412,6 +452,24 @@ export default function PanelClient({
                   <span className="hidden text-xs text-slate-400 sm:inline">
                     {s.attendanceCount} asistencias
                   </span>
+                  {s.certCount > 0 && (
+                    <a
+                      href={`/api/certificates/download?userId=${s._id}`}
+                      download
+                      title="Descargar sus certificados en un ZIP"
+                      className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/10"
+                    >
+                      <Download size={14} /> {s.certCount} PDF
+                    </a>
+                  )}
+                  <button
+                    disabled={busy === s._id}
+                    onClick={() => openPassword(s)}
+                    title="Asignarle una contraseña nueva"
+                    className="flex items-center gap-1 rounded-lg bg-brand-500/15 px-3 py-1.5 text-xs font-semibold text-brand-200 transition hover:bg-brand-500/30 disabled:opacity-50"
+                  >
+                    <KeyRound size={14} /> Contraseña
+                  </button>
                   <button
                     disabled={busy === s._id}
                     onClick={() => deleteUser(s._id, s.name)}
@@ -429,7 +487,143 @@ export default function PanelClient({
             )}
           </ul>
         </div>
+        </div>
       )}
+
+      {/* Modal: asignar contraseña */}
+      {pwFor && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+          onClick={() => setPwFor(null)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="glass w-full max-w-md space-y-4 rounded-2xl bg-slate-900/95 p-5"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{pwFor.avatar}</span>
+              <div className="min-w-0">
+                <p className="font-bold text-white">Nueva contraseña</p>
+                <p className="truncate text-xs text-slate-400">
+                  {pwFor.name} · {pwFor.email}
+                </p>
+              </div>
+            </div>
+
+            {pwDone ? (
+              <>
+                <p className="text-sm text-slate-300">
+                  Listo. Díctale estos datos al estudiante para que entre:
+                </p>
+                <div className="space-y-1 rounded-xl bg-white/5 p-3 text-sm">
+                  <p className="text-slate-400">
+                    Correo: <span className="text-white">{pwFor.email}</span>
+                  </p>
+                  <p className="text-slate-400">
+                    Contraseña:{" "}
+                    <span className="font-mono text-lg font-bold text-white">{pwDone}</span>
+                  </p>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard
+                        ?.writeText(`Correo: ${pwFor.email}\nContraseña: ${pwDone}`)
+                        .then(() => toast.success("Copiado"));
+                    }}
+                    className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
+                  >
+                    <Copy size={15} /> Copiar
+                  </button>
+                  <button
+                    onClick={() => setPwFor(null)}
+                    className="rounded-lg bg-gradient-to-r from-brand-500 to-magic-500 px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  savePassword();
+                }}
+                className="space-y-4"
+              >
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    value={pwValue}
+                    onChange={(e) => setPwValue(e.target.value)}
+                    minLength={6}
+                    placeholder="Mínimo 6 caracteres"
+                    className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-white outline-none focus:border-brand-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPwValue(randomPassword())}
+                    title="Generar otra"
+                    className="rounded-lg bg-white/5 px-3 text-slate-300 hover:bg-white/10"
+                  >
+                    <Shuffle size={16} />
+                  </button>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Reemplaza la contraseña anterior. Si la cuenta no estaba verificada, queda
+                  verificada para que pueda entrar ya.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPwFor(null)}
+                    className="rounded-lg bg-white/5 px-3 py-2 text-sm text-slate-300 hover:bg-white/10"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={busy === pwFor._id}
+                    className="flex items-center gap-1 rounded-lg bg-gradient-to-r from-brand-500 to-magic-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    <KeyRound size={15} /> Guardar
+                  </button>
+                </div>
+              </form>
+            )}
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Contraseña fácil de dictar: sin letras/números que se confunden (0/O, 1/l/I).
+function randomPassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
+// Botón de descarga de TODOS los certificados PDF en un solo ZIP.
+function DownloadAllBar({ total }: { total: number }) {
+  return (
+    <div className="glass flex flex-wrap items-center gap-3 rounded-2xl p-4">
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold text-white">Descargar certificados</p>
+        <p className="text-xs text-slate-400">
+          {total} PDF en un ZIP, con una carpeta por estudiante.
+        </p>
+      </div>
+      <a
+        href="/api/certificates/download"
+        download
+        className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-magic-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:brightness-110"
+      >
+        <Download size={18} /> Descargar todos
+      </a>
     </div>
   );
 }

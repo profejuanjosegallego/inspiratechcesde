@@ -44,6 +44,7 @@ export interface StudentRow {
   verified: boolean;
   createdAt: string;
   attendanceCount: number;
+  certCount: number; // certificados PDF subidos (para descargarlos)
 }
 
 export default async function PanelPage({
@@ -121,6 +122,13 @@ export default async function PanelPage({
       return b.uploadedAt.localeCompare(a.uploadedAt);
     });
 
+  const certCountMap = new Map<string, number>();
+  for (const p of certDocs) {
+    if (!p.fileId) continue;
+    const k = p.userId.toString();
+    certCountMap.set(k, (certCountMap.get(k) ?? 0) + 1);
+  }
+
   // Estudiantes (para gestionar / eliminar)
   const studentRows: StudentRow[] = students.map((s) => ({
     _id: s._id.toString(),
@@ -130,6 +138,7 @@ export default async function PanelPage({
     verified: !!s.verified,
     createdAt: new Date(s.createdAt).toISOString(),
     attendanceCount: attCountMap.get(s._id.toString()) ?? 0,
+    certCount: certCountMap.get(s._id.toString()) ?? 0,
   }));
 
   return (
