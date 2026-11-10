@@ -61,7 +61,9 @@ export async function GET(req: Request) {
       .sort((a, b) => a.student.localeCompare(b.student) || a.course.localeCompare(b.course))
       .map(({ p, student, course }) => {
         // Evita nombres repetidos dentro del ZIP.
-        const base = `${student}/${course}${STATUS_SUFFIX[p.status] ?? ""}`;
+        // Si es de un solo estudiante, los PDF van sueltos (su nombre ya está en el ZIP).
+        const folder = userIdParam ? "" : `${student}/`;
+        const base = `${folder}${course}${STATUS_SUFFIX[p.status] ?? ""}`;
         let name = `${base}.pdf`;
         for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base} (${n}).pdf`;
         used.add(name.toLowerCase());

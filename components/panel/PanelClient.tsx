@@ -46,8 +46,6 @@ export default function PanelClient({
   const [pwValue, setPwValue] = useState("");
   const [pwDone, setPwDone] = useState<string | null>(null); // contraseña ya guardada
 
-  const totalPdfs = students.reduce((n, s) => n + s.certCount, 0);
-
   function openPassword(s: StudentRow) {
     setPwFor(s);
     setPwValue(randomPassword());
@@ -330,7 +328,6 @@ export default function PanelClient({
 
       {tab === "certificados" && (
         <div className="space-y-3">
-          {totalPdfs > 0 && <DownloadAllBar total={totalPdfs} />}
           {certs.length === 0 && (
             <p className="glass rounded-2xl p-6 text-center text-sm text-slate-400">
               No hay certificados subidos todavía.
@@ -428,7 +425,10 @@ export default function PanelClient({
 
       {tab === "estudiantes" && (
         <div className="space-y-3">
-        {totalPdfs > 0 && <DownloadAllBar total={totalPdfs} />}
+        <p className="px-1 text-xs text-slate-400">
+          Usa <b className="text-slate-200">Descargar certificados</b> para bajar en un ZIP
+          los PDF de cada estudiante.
+        </p>
         <div className="glass overflow-hidden rounded-2xl">
           <ul className="divide-y divide-white/5">
             {students.map((s) => (
@@ -452,15 +452,19 @@ export default function PanelClient({
                   <span className="hidden text-xs text-slate-400 sm:inline">
                     {s.attendanceCount} asistencias
                   </span>
-                  {s.certCount > 0 && (
+                  {s.certCount > 0 ? (
                     <a
                       href={`/api/certificates/download?userId=${s._id}`}
                       download
-                      title="Descargar sus certificados en un ZIP"
-                      className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/10"
+                      title={`Descargar los ${s.certCount} certificados de ${s.name} en un ZIP`}
+                      className="flex items-center gap-1 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/30"
                     >
-                      <Download size={14} /> {s.certCount} PDF
+                      <Download size={14} /> Descargar certificados ({s.certCount})
                     </a>
+                  ) : (
+                    <span className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-xs text-slate-500">
+                      <Download size={14} /> Sin certificados
+                    </span>
                   )}
                   <button
                     disabled={busy === s._id}
@@ -605,27 +609,6 @@ function randomPassword() {
   const chars = "abcdefghjkmnpqrstuvwxyz23456789";
   const bytes = crypto.getRandomValues(new Uint8Array(8));
   return Array.from(bytes, (b) => chars[b % chars.length]).join("");
-}
-
-// Botón de descarga de TODOS los certificados PDF en un solo ZIP.
-function DownloadAllBar({ total }: { total: number }) {
-  return (
-    <div className="glass flex flex-wrap items-center gap-3 rounded-2xl p-4">
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold text-white">Descargar certificados</p>
-        <p className="text-xs text-slate-400">
-          {total} PDF en un ZIP, con una carpeta por estudiante.
-        </p>
-      </div>
-      <a
-        href="/api/certificates/download"
-        download
-        className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-magic-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:brightness-110"
-      >
-        <Download size={18} /> Descargar todos
-      </a>
-    </div>
-  );
 }
 
 // Clases completas (Tailwind no puede generar clases interpoladas).
